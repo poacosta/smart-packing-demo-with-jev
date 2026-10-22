@@ -1,0 +1,78 @@
+@import "tailwindcss";
+
+:root {
+  --paper: #f3efe6;
+  --panel: #fbf8f1;
+  --line: #e4dccb;
+  --ink: #2d2a24;
+  --muted: #8a8373;
+  --leaf: #3f6b4a;
+  --leaf-soft: #e3ead8;
+  --leaf-line: #c9d6bc;
+  --clay: #c2603e;
+  --shell: #3e6e4c;
+  --shell-dark: #2f5739;
+  --lining: #efe3cc;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-panel: var(--panel);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-leaf: var(--leaf);
+  --color-leaf-soft: var(--leaf-soft);
+  --color-leaf-line: var(--leaf-line);
+  --color-clay: var(--clay);
+  --color-shell: var(--shell);
+  --color-shell-dark: var(--shell-dark);
+  --color-lining: var(--lining);
+  --font-sans: var(--font-dm-sans);
+  --font-serif: var(--font-instrument-serif);
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+/* Woven texture for the suitcase lining. */
+.lining {
+  background-color: var(--lining);
+  background-image:
+    repeating-linear-gradient(0deg, rgb(0 0 0 / 0.025) 0 1px, transparent 1px 4px),
+    repeating-linear-gradient(90deg, rgb(0 0 0 / 0.025) 0 1px, transparent 1px 4px);
+}
+
+@keyframes drop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.85) rotate(-4deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.drop-in {
+  animation: drop-in 420ms cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+
+@keyframes pulse-dot {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.pulse-dot {
+  animation: pulse-dot 900ms ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drop-in,
+  .pulse-dot {
+    animation: none;
+  }
+}
