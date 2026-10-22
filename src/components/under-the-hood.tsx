@@ -84,13 +84,13 @@ export function UnderTheHood({
           </h3>
           <p className="text-sm">{BAGS[decision.bag].label}</p>
           <p className="mt-1 text-sm">{WARDROBES[decision.wardrobe].label} wardrobe</p>
-          <p className="mt-1 text-xs text-muted">Passed to the model when scoring each item. Suitable clothing can be packed in multiple units to fill the bag.</p>
+          <p className="mt-1 text-xs text-muted">Passed to the model when scoring each item. This is a capacity limit; the bag may have room to spare.</p>
         </div>
         <p className="text-xs text-muted">
           {decision.source === "model"
             ? `${decision.questionCount} questions, one call to ${decision.model} in ${decision.latencyMs} ms.`
             : "Offline keyword matching; no model call."}{" "}
-          The bars show trip signals; each item also receives a capacity-aware usefulness score. Packing maximizes occupied volume, then usefulness.
+          The bars show trip signals; each item also receives a capacity-aware usefulness score. Packing prioritizes useful items within the limit.
         </p>
       </section>
     </div>

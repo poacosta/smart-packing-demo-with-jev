@@ -29,7 +29,7 @@ const signalQuestions = Object.fromEntries(
 
 const ITEM_SCORE_CRITERIA = [
   "Not appropriate for this trip; leave it at home even if there is space",
-  "Optional but appropriate; useful if space allows",
+  "Optional; leave it out unless the traveller explicitly adds it",
   "Useful for the planned weather or activities",
   "Important for this trip",
   "Essential for this trip",
@@ -40,7 +40,7 @@ const itemQuestionKey = (id: string): `item_${string}` => `item_${id.replaceAll(
 const getItemQuestions = (wardrobe: WardrobeId) => Object.fromEntries(
   getWardrobeItems(wardrobe).map((item) => [itemQuestionKey(item.id), {
     type: "score",
-    instructions: `How useful is ${item.name} (${item.liters} litres per unit) for this trip, given the selected capacity? Help fill the chosen bag with appropriate items. ${item.repeatable ? "Additional units of this clothing can use spare space." : "Pack at most one; do not duplicate equipment or accessories."} Do not recommend unsuitable clothing just to fill space.`,
+    instructions: `How useful is ${item.name} (${item.liters} litres per unit) for this trip, given the selected capacity? Recommend what the traveller needs for the weather and activities. Capacity is an upper limit, not a target: leave spare space rather than adding unnecessary items or extra clothing units.`,
     criteria: ITEM_SCORE_CRITERIA,
   }]),
 ) as Record<`item_${string}`, { type: "score"; instructions: string; criteria: string[] }>;
@@ -92,7 +92,7 @@ export async function decideTrip(
       capacityLiters: BAGS[bag].liters,
       wardrobe,
       wardrobePreference: WARDROBES[wardrobe].description,
-      packingGoal: "Use as much of the selected capacity as possible with suitable items and extra clothing units. The traveller has already chosen the bag; adapt its contents to this limit.",
+      packingGoal: "Pack useful items for the trip within the selected capacity. The bag may remain partly empty. Do not add optional items or extra clothing units just to fill space.",
     },
     questions,
     abortSignal,

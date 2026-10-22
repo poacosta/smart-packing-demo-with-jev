@@ -79,7 +79,7 @@ export function Suitcase({
           />
         </div>
         <p className="mt-2 text-xs text-muted">
-          {Math.max(0, plan.capacity - plan.usedLiters).toFixed(1)} L free. Tap an item to remove all its units; Jev fills the space with other suitable picks.
+          {Math.max(0, plan.capacity - plan.usedLiters).toFixed(1)} L free. Room to spare is fine. Tap an item to take it out.
         </p>
       </div>
     </div>

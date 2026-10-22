@@ -8,8 +8,9 @@ Men or Women wardrobe and an 18, 24, 40 or 65 L bag, then describe the trip. Whe
 the text, capacity or wardrobe settles
 (350 ms), the app asks [Jev](https://vercel.com/ai-gateway/models/jev)
 (`typesafe-ai/jev`, through Vercel AI Gateway) every packing question in **a single
-call**. Jev scores which items suit the trip and chosen capacity; the app fills as
-much space as possible with those items and additional units of suitable clothing.
+call**. Jev scores which items suit the trip and chosen capacity; the app packs
+useful items within that limit. Spare space is fine: it does not add clothing copies
+or optional items just to fill the bag.
 
 **Stack:** Next.js 16 (App Router, Cache Components) · AI SDK 7 (`experimental_decide`)
 · Vercel AI Gateway · Tailwind CSS 4.
@@ -76,10 +77,10 @@ sequenceDiagram
     API->>Jev: experimental_decide({ model: "typesafe-ai/jev", state: { trip, capacityLiters, wardrobe, packingGoal }, questions })
     Jev-->>API: Trip context and item usefulness scores
     API-->>UI: signals + season + temperature + selected bag + wardrobe + itemScores
-    Note over UI: computePlan() maximizes occupied volume within the chosen capacity
+    Note over UI: computePlan() prioritizes usefulness within the chosen capacity
     UI-->>User: Suitcase, cards and "under the hood" update
     User->>UI: Taps an item
-    Note over UI: Refill locally, no new model call
+    Note over UI: Recompute locally, no new model call
     User->>UI: Changes capacity or wardrobe
     UI->>API: Re-score the same trip for the selected bag and wardrobe
 ```
@@ -92,7 +93,7 @@ with probabilities. The app asks it 59 or 60 things at once, depending on the wa
 | `boolean` | 14 signals: sun, cold, snow, rain, swimming, hiking, sightseeing, abroad, flying, reading, work, dress code, workouts, pack light | Trip context shown under the hood |
 | `choice`  | Season at the destination (winter / spring / summer / autumn), minding the hemisphere     | Seasonal context          |
 | `score`   | Temperature (5 levels, from "Freezing" to "Hot")                                           | Subtitle "≈ winter · freezing…"        |
-| `score`   | Usefulness of each available wardrobe item, given the trip and selected capacity (5 levels) | Appropriate items and preferences for filling the bag |
+| `score`   | Usefulness of each available wardrobe item, given the trip and selected capacity (5 levels) | Useful items within the capacity limit |
 
 The call, simplified (see [`decision.ts`](src/lib/packing/decision.ts)):
 
@@ -101,7 +102,7 @@ import { experimental_decide as decide } from "ai";
 
 const result = await decide({
   model: "typesafe-ai/jev",
-  state: { trip, capacityLiters: 24, wardrobe: "women", packingGoal: "Fill the selected bag with suitable items and extra clothing units." },
+  state: { trip, capacityLiters: 24, wardrobe: "women", packingGoal: "Pack useful items within the selected capacity; spare space is fine." },
   questions: {
     snow: { type: "boolean", instructions: "Will there be snow, ice or freezing temperatures?" },
     season: {
@@ -122,33 +123,29 @@ result.answers.season.probabilities;  // { winter: 1, spring: 0, summer: 0, autu
 
 The logic lives in [`plan.ts`](src/lib/packing/plan.ts). It is pure and recomputed
 on the client. Changing capacity or wardrobe asks Jev to re-score the trip; manual item edits
-refill the bag locally.
+recompute the plan locally.
 
 1. The traveller selects the capacity and wardrobe. Only compatible clothing and
    shared items are sent to the model or shown in the packing lists. The model
    scores their usefulness from 0 to 4, normalized to 0–1 in the response.
 2. Reserve one unit of each manual pick, then each basic item, while space allows.
-3. Consider other items with a usefulness score of at least 25%. Clothing marked
-   `repeatable` may have multiple units; equipment and accessories have at most one.
-4. Use a capacity search in integer decilitres to maximize occupied volume without
-   exceeding the limit. Among equally full plans, prefer usefulness and variety:
-   a first unit of an important item (usefulness at least 75%) receives a bonus,
-   and additional clothing units have diminishing value. Weight usefulness by
-   volume so small garments do not dominate the additional quantities.
-5. Cards and suitcase badges show quantities; occupied litres include every unit.
-   Tapping removes all units of that item and fills the space with other suitable
-   picks. "Reset to Jev" clears manual overrides.
-6. Leave space when the remaining appropriate items cannot fill it. Never duplicate
-   passports, chargers or other equipment just to reach the limit.
+3. Consider other items with a usefulness score of at least 50% (useful or better).
+   Optional items stay at home unless the traveller adds them manually.
+4. Use a capacity search in integer decilitres to maximize total usefulness without
+   exceeding the limit. Among equally useful plans, prefer the one using less space.
+5. Pack each catalog item at most once. Clothing copies are never added just to
+   fill space. A larger bag can therefore keep the same contents and more free space.
+6. Tapping an item removes it and recomputes the remaining useful picks within the
+   limit. "Reset to Jev" clears manual overrides.
 
 ```mermaid
 flowchart TD
     C[Selected capacity + wardrobe + trip] --> J[Jev usefulness scores]
     J --> E[Exclude removed and unsuitable items]
     E --> R[Reserve manual picks and basics]
-    R --> F[Maximize remaining occupied litres]
-    F --> Q[Prefer usefulness and varied clothing quantities]
-    Q --> P[Packed quantities within the limit]
+    R --> F[Maximize usefulness within the limit]
+    F --> Q[Prefer less luggage when equally useful]
+    Q --> P[Useful items with room to spare]
 ```
 
 "Under the hood" (in the footer) shows the trip probabilities, season distribution,
@@ -214,8 +211,8 @@ npx tsc src/lib/packing/plan.test.ts src/lib/packing/decision.test.ts --module c
 NODE_PATH="$PWD/node_modules" node --conditions=react-server --test /tmp/packing-tests/plan.test.js /tmp/packing-tests/decision.test.js
 ```
 
-These tests cover both wardrobes and all four capacities, maximum fill, quantities,
-manual overrides, single-unit equipment, capacity limits, and the request passed through the real
+These tests cover both wardrobes and all four capacities, useful selection with spare
+space, manual overrides, no duplicated items, capacity limits, and the request passed through the real
 decision SDK with a mock provider. They do not measure the live Jev service.
 
 ## Deploy to Vercel
@@ -275,8 +272,7 @@ src/components/              UI (suitcase, cards, "under the hood", debounced ho
 Everything comes from [`catalog.ts`](src/lib/packing/catalog.ts); the questions sent
 to the model are generated from it.
 
-- **New item:** add `{ id, name, emoji, liters, signal }` to `ITEMS`. Set
-  `repeatable: true` only for clothing that may have additional packed units.
+- **New item:** add `{ id, name, emoji, liters, signal }` to `ITEMS`.
   Set `wardrobe: "men"` or `wardrobe: "women"` for a wardrobe-specific item; omit it
   for shared items. Use `image` for an explicit individual illustration URL.
   `signal` is a signal, a season or `"basic"`; volumes use at most one decimal place.
@@ -328,5 +324,5 @@ Suggested base prompt:
   server logs (`Decision failed`).
 - **A capacity or wardrobe change is waiting:** enable Live so the selection is
   sent to the model. Paused mode does not issue requests.
-- **A little space remains:** the available suitable items may not fit the exact
-  remainder. Equipment is never duplicated, and removed items stay excluded.
+- **Space remains:** capacity is an upper limit. The app packs useful items and
+  leaves optional items out rather than adding duplicates to fill the bag.

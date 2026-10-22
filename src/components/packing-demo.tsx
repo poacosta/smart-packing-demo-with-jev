@@ -89,7 +89,7 @@ export function PackingDemo({ art }: { art: Record<string, string> }) {
           />
 
           <div className="mt-2 flex justify-between gap-4 text-[11px] text-muted">
-            <span>Choose your bag, describe the trip. Jev fills the space.</span>
+            <span>Choose your bag, describe the trip. Jev packs what you need.</span>
             <span className={status === "error" ? "text-clay" : ""}>
               {!live
                 ? "Paused"
@@ -157,7 +157,7 @@ export function PackingDemo({ art }: { art: Record<string, string> }) {
                 {climate && <p className="mt-1 text-xs text-muted">≈ {climate}</p>}
               </div>
               <label className="flex shrink-0 flex-col gap-1 text-[10px] text-muted">
-                Fill this bag
+                Bag capacity
                 <select
                   value={bagId}
                   onChange={(e) => setBagId(e.target.value as BagId)}

@@ -149,8 +149,6 @@ export type Item = {
   image?: string;
   /** Volume in litres once packed. */
   liters: number;
-  /** Clothing that can use spare capacity with additional units. */
-  repeatable?: boolean;
   /** Omit for items shared by both wardrobe options. */
   wardrobe?: WardrobeId;
   /** "basic" items always go in unless the traveller removes them. */
@@ -160,52 +158,52 @@ export type Item = {
 // Order here is the order the cards are shown in.
 export const ITEMS: Item[] = [
   // Basics
-  { id: "cotton-tees", name: "Cotton tees", emoji: "👕", liters: 2.5, repeatable: true, signal: "basic" },
+  { id: "cotton-tees", name: "Cotton tees", emoji: "👕", liters: 2.5, signal: "basic" },
   { id: "walking-shoes", name: "Walking shoes", emoji: "👟", liters: 3, signal: "basic" },
   { id: "phone-charger", name: "Phone charger", emoji: "🔌", liters: 0.3, signal: "basic" },
   { id: "water-bottle", name: "Water bottle", emoji: "🧃", liters: 0.8, signal: "basic" },
   { id: "wash-bag", name: "Wash bag", emoji: "🧼", liters: 1.5, signal: "basic" },
 
   // Summer wardrobe
-  { id: "linen-shirt", name: "Linen shirt", emoji: "👔", liters: 1, repeatable: true, signal: "summer" },
-  { id: "summer-dress", name: "Summer dress", emoji: "👗", liters: 1, repeatable: true, wardrobe: "women", signal: "summer" },
-  { id: "tank-tops", name: "Tank tops", emoji: "🎽", liters: 0.6, repeatable: true, signal: "summer" },
-  { id: "linen-trousers", name: "Linen trousers", emoji: "👖", liters: 1.2, repeatable: true, signal: "summer" },
+  { id: "linen-shirt", name: "Linen shirt", emoji: "👔", liters: 1, signal: "summer" },
+  { id: "summer-dress", name: "Summer dress", emoji: "👗", liters: 1, wardrobe: "women", signal: "summer" },
+  { id: "tank-tops", name: "Tank tops", emoji: "🎽", liters: 0.6, signal: "summer" },
+  { id: "linen-trousers", name: "Linen trousers", emoji: "👖", liters: 1.2, signal: "summer" },
 
   // Spring wardrobe
   { id: "trench-coat", name: "Trench coat", emoji: "🧥", liters: 2.5, signal: "spring" },
-  { id: "cardigan", name: "Cardigan", emoji: "🧶", liters: 1.5, repeatable: true, signal: "spring" },
-  { id: "light-chinos", name: "Light chinos", emoji: "👖", liters: 1.5, repeatable: true, signal: "spring" },
+  { id: "cardigan", name: "Cardigan", emoji: "🧶", liters: 1.5, signal: "spring" },
+  { id: "light-chinos", name: "Light chinos", emoji: "👖", liters: 1.5, signal: "spring" },
   { id: "white-sneakers", name: "White sneakers", emoji: "👟", liters: 2.5, signal: "spring" },
 
   // Autumn wardrobe
   { id: "denim-jacket", name: "Denim jacket", emoji: "🧥", liters: 2.5, signal: "autumn" },
-  { id: "flannel-shirt", name: "Flannel shirt", emoji: "👕", liters: 1.5, repeatable: true, signal: "autumn" },
-  { id: "dark-jeans", name: "Dark jeans", emoji: "👖", liters: 2, repeatable: true, signal: "autumn" },
+  { id: "flannel-shirt", name: "Flannel shirt", emoji: "👕", liters: 1.5, signal: "autumn" },
+  { id: "dark-jeans", name: "Dark jeans", emoji: "👖", liters: 2, signal: "autumn" },
   { id: "ankle-boots", name: "Ankle boots", emoji: "👢", liters: 3, signal: "autumn" },
 
   // Winter wardrobe
   { id: "wool-coat", name: "Wool coat", emoji: "🧥", liters: 5, signal: "winter" },
   { id: "wool-scarf", name: "Wool scarf", emoji: "🧣", liters: 0.8, signal: "winter" },
-  { id: "fleece-pullover", name: "Fleece pullover", emoji: "🧥", liters: 2.5, repeatable: true, signal: "winter" },
+  { id: "fleece-pullover", name: "Fleece pullover", emoji: "🧥", liters: 2.5, signal: "winter" },
   { id: "winter-boots", name: "Winter boots", emoji: "🥾", liters: 4.5, signal: "winter" },
 
   // Weather
-  { id: "easy-shorts", name: "Easy shorts", emoji: "🩳", liters: 1.2, repeatable: true, signal: "sun" },
+  { id: "easy-shorts", name: "Easy shorts", emoji: "🩳", liters: 1.2, signal: "sun" },
   { id: "sandals", name: "Sandals", emoji: "🩴", liters: 1, signal: "sun" },
   { id: "sunglasses", name: "Sunglasses", emoji: "🕶️", liters: 0.3, signal: "sun" },
   { id: "sunscreen", name: "Sunscreen", emoji: "🧴", liters: 0.3, signal: "sun" },
   { id: "sun-hat", name: "Sun hat", emoji: "👒", liters: 1, signal: "sun" },
-  { id: "cozy-knit", name: "Cozy knit", emoji: "🧶", liters: 3, repeatable: true, signal: "cold" },
-  { id: "thermal-layers", name: "Thermal layers", emoji: "🧦", liters: 2, repeatable: true, signal: "cold" },
+  { id: "cozy-knit", name: "Cozy knit", emoji: "🧶", liters: 3, signal: "cold" },
+  { id: "thermal-layers", name: "Thermal layers", emoji: "🧦", liters: 2, signal: "cold" },
   { id: "puffer-jacket", name: "Puffer jacket", emoji: "🧥", liters: 5, signal: "snow" },
   { id: "beanie-gloves", name: "Beanie & gloves", emoji: "🧤", liters: 0.8, signal: "snow" },
   { id: "rain-jacket", name: "Rain jacket", emoji: "🧥", liters: 1.5, signal: "rain" },
   { id: "tiny-umbrella", name: "Tiny umbrella", emoji: "☂️", liters: 0.5, signal: "rain" },
 
   // Activities & travel
-  { id: "swimwear", name: "Swimwear", emoji: "🩱", liters: 0.4, repeatable: true, wardrobe: "women", signal: "swimming" },
-  { id: "swim-shorts", name: "Swim shorts", emoji: "🩳", image: "/items/swim-shorts.png", liters: 0.4, repeatable: true, wardrobe: "men", signal: "swimming" },
+  { id: "swimwear", name: "Swimwear", emoji: "🩱", liters: 0.4, wardrobe: "women", signal: "swimming" },
+  { id: "swim-shorts", name: "Swim shorts", emoji: "🩳", image: "/items/swim-shorts.png", liters: 0.4, wardrobe: "men", signal: "swimming" },
   { id: "hiking-boots", name: "Hiking boots", emoji: "🥾", liters: 4, signal: "hiking" },
   { id: "daypack", name: "Daypack", emoji: "🎒", liters: 2, signal: "hiking" },
   { id: "little-camera", name: "Little camera", emoji: "📷", liters: 1, signal: "exploring" },
@@ -214,10 +212,10 @@ export const ITEMS: Item[] = [
   { id: "headphones", name: "Headphones", emoji: "🎧", liters: 1, signal: "flying" },
   { id: "good-book", name: "A good book", emoji: "📕", liters: 0.8, signal: "reading" },
   { id: "laptop", name: "Laptop", emoji: "💻", liters: 2.5, signal: "work" },
-  { id: "smart-outfit", name: "Smart outfit", emoji: "🤵", liters: 3, repeatable: true, wardrobe: "men", signal: "formal" },
-  { id: "formal-dress", name: "Formal dress", emoji: "👗", image: "/items/formal-dress.png", liters: 1.5, repeatable: true, wardrobe: "women", signal: "formal" },
+  { id: "smart-outfit", name: "Smart outfit", emoji: "🤵", liters: 3, wardrobe: "men", signal: "formal" },
+  { id: "formal-dress", name: "Formal dress", emoji: "👗", image: "/items/formal-dress.png", liters: 1.5, wardrobe: "women", signal: "formal" },
   { id: "dress-shoes", name: "Dress shoes", emoji: "👞", liters: 2.5, signal: "formal" },
-  { id: "running-kit", name: "Running kit", emoji: "🏃", liters: 1.5, repeatable: true, signal: "fitness" },
+  { id: "running-kit", name: "Running kit", emoji: "🏃", liters: 1.5, signal: "fitness" },
 ];
 
 export function getWardrobeItems(wardrobe: WardrobeId): Item[] {

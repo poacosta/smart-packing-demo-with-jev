@@ -50,7 +50,7 @@ const PACK_LIGHT_THRESHOLD = 0.6;
 // Seasons share one choice distribution, so a shoulder-season trip
 // (e.g. 55% spring, 40% summer) should still get some of both wardrobes.
 const SEASON_THRESHOLD = 0.35;
-const ITEM_SCORE_THRESHOLD = 0.25;
+const ITEM_SCORE_THRESHOLD = 0.5;
 /** Below this, an item isn't worth showing as a card. */
 export const RELEVANCE_FLOOR = 0.15;
 
@@ -88,7 +88,7 @@ export function computePlan(
     return { item, probability, score, override, wanted, priority };
   });
 
-  // Reserve one unit of user picks and basics before filling spare space.
+  // Reserve one unit of user picks and basics before selecting useful items.
   // Integer decilitres avoid rounding errors in the capacity search.
   const quantities = new Map<string, number>();
   const capacityUnits = Math.round(capacity * 10);
@@ -112,7 +112,7 @@ export function computePlan(
       if (!row.wanted) continue;
       const existing = quantities.get(row.item.id) ?? 0;
       const units = Math.round(row.item.liters * 10);
-      const limit = row.item.repeatable ? Math.floor(remaining / units) : 1 - existing;
+      const limit = 1 - existing;
       const next = [...fills];
       const suitability = Math.max(row.score ?? row.probability ?? 1, 0.01);
       for (let used = 0; used <= remaining; used++) {
@@ -120,9 +120,7 @@ export function computePlan(
         if (!previous) continue;
         let utility = previous.utility;
         for (let count = 1; count <= limit && used + count * units <= remaining; count++) {
-          // Favor a first important item, then varied extras rather than many small garments.
-          if (existing === 0 && count === 1 && suitability >= 0.75) utility += capacity;
-          utility += suitability * row.item.liters / (existing + count);
+          utility += suitability;
           const total = used + count * units;
           if (!next[total] || utility > next[total]!.utility) {
             next[total] = { utility, previous, id: row.item.id, quantity: count };
@@ -133,9 +131,11 @@ export function computePlan(
     }
   }
 
-  // First maximize occupied volume, then suitability among equally full plans.
-  let filledUnits = remaining;
-  while (!fills[filledUnits]) filledUnits--;
+  // Capacity is a limit, not a target. Prefer usefulness, then less luggage.
+  let filledUnits = 0;
+  for (let used = 1; used <= remaining; used++) {
+    if (fills[used] && fills[used]!.utility > fills[filledUnits]!.utility) filledUnits = used;
+  }
   for (let fill = fills[filledUnits]; fill?.previous; fill = fill.previous) {
     quantities.set(fill.id, (quantities.get(fill.id) ?? 0) + fill.quantity);
   }

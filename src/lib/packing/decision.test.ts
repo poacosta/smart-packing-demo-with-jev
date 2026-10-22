@@ -20,11 +20,14 @@ test("passes every selected capacity and all item questions through the decision
         assert.ok(state?.type === "json");
         assert.equal((state.value as { capacityLiters: number }).capacityLiters, BAGS[bag].liters);
         assert.equal((state.value as { wardrobe: string }).wardrobe, wardrobe);
+        assert.match((state.value as { packingGoal: string }).packingGoal, /may remain partly empty/);
         assert.equal(options.abortSignal, controller.signal);
         assert.equal(Object.keys(options.questions).length, SIGNAL_IDS.length + 2 + selectedItems.length);
         assert.equal(options.questions.bag, undefined);
         for (const item of selectedItems) {
-          assert.equal(options.questions[`item_${item.id.replaceAll("-", "_")}`].type, "score");
+          const question = options.questions[`item_${item.id.replaceAll("-", "_")}`];
+          assert.equal(question.type, "score");
+          assert.match(JSON.stringify(question.instructions), /Capacity is an upper limit, not a target/);
         }
         for (const item of ITEMS.filter((item) => item.wardrobe && item.wardrobe !== wardrobe)) {
           assert.equal(options.questions[`item_${item.id.replaceAll("-", "_")}`], undefined);
