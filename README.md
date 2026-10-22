@@ -248,10 +248,16 @@ to the model are generated from it.
 
 ## Illustrations
 
-Until there are images, items show an emoji. Save each illustration as
-`public/items/<id>.png` (`.webp`, `.svg` and `.jpg` also work) and it replaces the
-emoji automatically. Recommended format: square PNG with a transparent background,
-about 256×256.
+All 44 catalog items have distinct illustrations in
+`public/illustrations/packing-atlas.png`. The atlas has six columns and eight rows;
+`src/lib/packing/illustrations.ts` maps each item id to its pixel bounds so each
+illustration stays centered without showing neighboring items. The same
+illustration appears in the cards, suitcase and unpacked list.
+
+To override an illustration, save `public/items/<id>.png` (`.webp`, `.svg` and `.jpg`
+also work). Individual files take priority over the atlas. Recommended format:
+square PNG with a transparent background, about 256×256. New items without an
+illustration still use their configured emoji as a placeholder.
 
 Suggested base prompt:
 
