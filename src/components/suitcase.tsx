@@ -11,7 +11,7 @@ export function Suitcase({
   onRemove: (id: string) => void;
 }) {
   const fill = Math.min(plan.usedLiters / plan.capacity, 1);
-  const full = fill > 0.92;
+  const totalQuantity = plan.packed.reduce((total, packed) => total + packed.quantity, 0);
 
   return (
     <div className="flex flex-col">
@@ -28,16 +28,21 @@ export function Suitcase({
               </p>
             ) : (
               <ul className="relative grid grid-cols-3 gap-x-2 gap-y-3">
-                {plan.packed.map(({ item }) => (
+                {plan.packed.map(({ item, quantity }) => (
                   <li key={item.id} className="drop-in flex justify-center">
                     <button
                       type="button"
                       onClick={() => onRemove(item.id)}
-                      title={`Take out ${item.name}`}
-                      className="rounded-xl p-1 transition hover:-translate-y-0.5 hover:bg-white/50 focus-visible:outline-2 focus-visible:outline-leaf"
+                      title={`Take out ${quantity > 1 ? `${quantity} × ` : ""}${item.name}`}
+                      className="relative rounded-xl p-1 transition hover:-translate-y-0.5 hover:bg-white/50 focus-visible:outline-2 focus-visible:outline-leaf"
                     >
                       <ItemArt item={item} size={54} />
-                      <span className="sr-only">Take out {item.name}</span>
+                      {quantity > 1 && (
+                        <span aria-hidden className="absolute -right-1 -bottom-1 rounded-full bg-panel px-1.5 py-0.5 text-[10px] font-semibold text-leaf shadow-sm">
+                          ×{quantity}
+                        </span>
+                      )}
+                      <span className="sr-only">Take out {quantity} × {item.name}</span>
                     </button>
                   </li>
                 ))}
@@ -47,13 +52,8 @@ export function Suitcase({
               smart packing.
             </span>
           </div>
-          {/* Zip pull + luggage tag */}
+          {/* Zip pull */}
           <div className="absolute top-10 -right-1 h-8 w-2.5 rounded-sm bg-[#d9b778]" />
-          <div className="absolute -right-3 bottom-8 rotate-[-8deg] rounded-md bg-[#d98c5f] px-2.5 py-1.5 text-center text-[10px] leading-tight font-semibold tracking-wider text-[#5a2c17] uppercase shadow">
-            Go
-            <br />
-            light
-          </div>
         </div>
         {/* Wheels */}
         <div className="flex justify-between px-10">
@@ -65,21 +65,21 @@ export function Suitcase({
       <div className="mt-5">
         <div className="flex items-baseline justify-between text-sm">
           <p>
-            <span className="font-serif text-2xl">{plan.packed.length}</span>{" "}
+            <span className="font-serif text-2xl">{totalQuantity}</span>{" "}
             <span className="text-muted">items packed</span>
           </p>
-          <p className={full ? "text-clay" : ""}>
+          <p className="text-leaf">
             {plan.usedLiters.toFixed(1)} / {plan.capacity} L
           </p>
         </div>
         <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-line">
           <div
-            className={`h-full rounded-full transition-[width] duration-500 ${full ? "bg-clay" : "bg-leaf"}`}
+            className="h-full rounded-full bg-leaf transition-[width] duration-500"
             style={{ width: `${fill * 100}%` }}
           />
         </div>
         <p className="mt-2 text-xs text-muted">
-          Tap an item to make room. You have the final say.
+          {Math.max(0, plan.capacity - plan.usedLiters).toFixed(1)} L free. Tap an item to remove all its units; Jev fills the space with other suitable picks.
         </p>
       </div>
     </div>

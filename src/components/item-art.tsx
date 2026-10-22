@@ -9,7 +9,7 @@ export const ItemArtContext = createContext<Record<string, string>>({});
 
 /** Individual artwork overrides the bundled illustration for an item. */
 export function ItemArt({ item, size }: { item: Item; size: number }) {
-  const src = useContext(ItemArtContext)[item.id];
+  const src = useContext(ItemArtContext)[item.id] ?? item.image;
   const bounds = ITEM_ILLUSTRATIONS[item.id];
 
   if (!src && bounds) {
