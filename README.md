@@ -3,11 +3,14 @@
 This demo shows one possible use case for **decision models**: turning free-form
 text into typed, probability-scored decisions that application code can act on.
 
-Here the text is a trip description and the decisions are what to pack. Whenever the
-text settles (350 ms), the app asks [Jev](https://vercel.com/ai-gateway/models/jev)
+Here the text is a trip description and the decisions are what to pack. Choose a
+Men or Women wardrobe and an 18, 24, 40 or 65 L bag, then describe the trip. Whenever
+the text, capacity or wardrobe settles
+(350 ms), the app asks [Jev](https://vercel.com/ai-gateway/models/jev)
 (`typesafe-ai/jev`, through Vercel AI Gateway) every packing question in **a single
-call** (~300 ms). The suitcase reacts as you type: items go in and out, the bag size
-changes and anything that doesn't fit is flagged.
+call**. Jev scores which items suit the trip and chosen capacity; the app packs
+useful items within that limit. Spare space is fine: it does not add clothing copies
+or optional items just to fill the bag.
 
 **Stack:** Next.js 16 (App Router, Cache Components) · AI SDK 7 (`experimental_decide`)
 · Vercel AI Gateway · Tailwind CSS 4.
@@ -20,9 +23,10 @@ returns an answer with probabilities for each one. That shapes how the app is bu
 
 - **The model judges, the code decides.** Thresholds, priorities and the bag's
   capacity are plain TypeScript, so behaviour is predictable, testable and easy to
-  explain: every card says why it is there ("92% sun").
-- **Many questions, one call.** All 17 questions go in one request of about 300 ms
-  and cost a fraction of a cent, cheap enough to run every time you pause typing.
+  explain: every card shows usefulness, packed quantity and occupied litres.
+- **Many questions, one call.** Each request asks 16 context questions plus a
+  usefulness score for each item in the selected wardrobe: 43 for Men and 44 for
+  Women (59 or 60 questions in total).
 - **Probabilities, not prose.** There is no output to parse and no format to break.
   Uncertainty stays visible: at 44% rain, the umbrella stays home.
 - **People stay in control.** The model proposes and the user overrides; their
@@ -69,25 +73,27 @@ sequenceDiagram
 
     User->>UI: Types or edits the trip
     Note over UI: 350 ms debounce, aborts the previous request
-    UI->>API: { trip }
-    API->>Jev: experimental_decide({ model: "typesafe-ai/jev", state: { trip }, questions })
-    Jev-->>API: Typed answers with probabilities
-    API-->>UI: signals + season + temperature + bag
-    Note over UI: computePlan() runs on the client
+    UI->>API: { trip, bag, wardrobe }
+    API->>Jev: experimental_decide({ model: "typesafe-ai/jev", state: { trip, capacityLiters, wardrobe, packingGoal }, questions })
+    Jev-->>API: Trip context and item usefulness scores
+    API-->>UI: signals + season + temperature + selected bag + wardrobe + itemScores
+    Note over UI: computePlan() prioritizes usefulness within the chosen capacity
     UI-->>User: Suitcase, cards and "under the hood" update
-    User->>UI: Taps an item or changes the bag
-    Note over UI: Recomputed locally, no new model call
+    User->>UI: Taps an item
+    Note over UI: Recompute locally, no new model call
+    User->>UI: Changes capacity or wardrobe
+    UI->>API: Re-score the same trip for the selected bag and wardrobe
 ```
 
 Jev is a **decision** model: it doesn't generate text, it answers typed questions
-with probabilities. The app asks it 17 things at once:
+with probabilities. The app asks it 59 or 60 things at once, depending on the wardrobe:
 
 | Type      | Question                                                                                   | Used in the UI                         |
 | --------- | ------------------------------------------------------------------------------------------ | -------------------------------------- |
-| `boolean` | 14 signals: sun, cold, snow, rain, swimming, hiking, sightseeing, abroad, flying, reading, work, dress code, workouts, pack light | Probability that unlocks each item |
-| `choice`  | Season at the destination (winter / spring / summer / autumn), minding the hemisphere     | Unlocks the seasonal wardrobe          |
+| `boolean` | 14 signals: sun, cold, snow, rain, swimming, hiking, sightseeing, abroad, flying, reading, work, dress code, workouts, pack light | Trip context shown under the hood |
+| `choice`  | Season at the destination (winter / spring / summer / autumn), minding the hemisphere     | Seasonal context          |
 | `score`   | Temperature (5 levels, from "Freezing" to "Hot")                                           | Subtitle "≈ winter · freezing…"        |
-| `choice`  | Bag: 18 L / 24 L / 40 L / 65 L                                                             | Default size ("Jev picks")             |
+| `score`   | Usefulness of each available wardrobe item, given the trip and selected capacity (5 levels) | Useful items within the capacity limit |
 
 The call, simplified (see [`decision.ts`](src/lib/packing/decision.ts)):
 
@@ -96,7 +102,7 @@ import { experimental_decide as decide } from "ai";
 
 const result = await decide({
   model: "typesafe-ai/jev",
-  state: { trip },
+  state: { trip, capacityLiters: 24, wardrobe: "women", packingGoal: "Pack useful items within the selected capacity; spare space is fine." },
   questions: {
     snow: { type: "boolean", instructions: "Will there be snow, ice or freezing temperatures?" },
     season: {
@@ -115,33 +121,35 @@ result.answers.season.probabilities;  // { winter: 1, spring: 0, summer: 0, autu
 
 ### Packing rules
 
-The logic lives in [`plan.ts`](src/lib/packing/plan.ts). It is pure and recomputed on
-the client, so changing the bag or tapping an item never triggers another model call.
+The logic lives in [`plan.ts`](src/lib/packing/plan.ts). It is pure and recomputed
+on the client. Changing capacity or wardrobe asks Jev to re-score the trip; manual item edits
+recompute the plan locally.
 
-1. **Basic kit** items always go in.
-2. Each item depends on one signal and goes in when `P(signal) ≥ 50%` (60% if Jev
-   detects that you want to pack light). Seasonal clothing goes in from 35%,
-   because the four seasons compete in a single distribution.
-3. The bag fills up by priority (your picks → basics → strongest signal) until it
-   runs out of litres. Anything that doesn't fit is marked "no room".
-4. Tapping an item takes it out or puts it in: you have the final say. "Reset to Jev"
-   undoes your changes.
+1. The traveller selects the capacity and wardrobe. Only compatible clothing and
+   shared items are sent to the model or shown in the packing lists. The model
+   scores their usefulness from 0 to 4, normalized to 0–1 in the response.
+2. Reserve one unit of each manual pick, then each basic item, while space allows.
+3. Consider other items with a usefulness score of at least 50% (useful or better).
+   Optional items stay at home unless the traveller adds them manually.
+4. Use a capacity search in integer decilitres to maximize total usefulness without
+   exceeding the limit. Among equally useful plans, prefer the one using less space.
+5. Pack each catalog item at most once. Clothing copies are never added just to
+   fill space. A larger bag can therefore keep the same contents and more free space.
+6. Tapping an item removes it and recomputes the remaining useful picks within the
+   limit. "Reset to Jev" clears manual overrides.
 
 ```mermaid
 flowchart TD
-    A[Item] --> B{You took it out?}
-    B -- yes --> R[Removed]
-    B -- no --> C{You added it, or it is basic kit?}
-    C -- yes --> F
-    C -- no --> D{"P(signal) ≥ threshold?<br/>50%, 60% when packing light, 35% for seasons"}
-    D -- no --> S[Left at home]
-    D -- yes --> F{Fits in the remaining litres?<br/>filled by priority}
-    F -- yes --> P[Packed]
-    F -- no --> N[No room]
+    C[Selected capacity + wardrobe + trip] --> J[Jev usefulness scores]
+    J --> E[Exclude removed and unsuitable items]
+    E --> R[Reserve manual picks and basics]
+    R --> F[Maximize usefulness within the limit]
+    F --> Q[Prefer less luggage when equally useful]
+    Q --> P[Useful items with room to spare]
 ```
 
-"Under the hood" (in the footer) shows the raw probabilities with the threshold
-marker, the season distribution, the temperature and the chosen bag.
+"Under the hood" (in the footer) shows the trip probabilities, season distribution,
+temperature and the capacity passed to the model. Cards show item suitability.
 
 ### Why Jev and not Laya
 
@@ -150,9 +158,11 @@ window. Jev offers 32k, native probability distributions for `choice` and `score
 questions, and costs $0.042 per million input tokens. You can switch models with
 `DECISION_MODEL` without touching the code.
 
-## Measured results
+## Historical measurements
 
-Real calls to `typesafe-ai/jev` with the app's presets:
+These measurements belong to the previous 17-question version, which asked the
+model to choose a bag. They do not measure the current capacity- and wardrobe-aware
+requests. Current model latency has not been measured yet.
 
 | Preset              | Season       | Temperature | Bag  | Latency | Strong signals (≥ 50%)                        |
 | ------------------- | ------------ | ----------- | ---- | ------- | --------------------------------------------- |
@@ -162,7 +172,7 @@ Real calls to `typesafe-ai/jev` with the app's presets:
 | Spring blossoms     | spring 100%  | mild        | 24 L | 267 ms  | sightseeing, abroad, rain 56%                 |
 | July in Patagonia   | winter 100%  | freezing    | 65 L | 385 ms  | cold, snow, hiking, flying                    |
 
-"July in Patagonia" checks that Jev understands July is winter in the southern
+The retired "July in Patagonia" example checked that Jev understands July is winter in the southern
 hemisphere. In practice seasons almost always come out close to 100%, so the 35%
 threshold rarely matters.
 
@@ -190,6 +200,21 @@ spending calls, but it is not what the demo is about.
 
 Scripts: `npm run dev`, `npm run build`, `npm run start`, `npm run lint`.
 
+### Verify capacity-aware packing
+
+Run `npm run lint` and `npx tsc --noEmit`. The packing and decision tests use
+Node's test runner, the existing TypeScript compiler and the SDK's mock decision
+model; no additional test dependencies are required:
+
+```bash
+npx tsc src/lib/packing/plan.test.ts src/lib/packing/decision.test.ts --module commonjs --moduleResolution node --target es2021 --outDir /tmp/packing-tests --esModuleInterop --skipLibCheck
+NODE_PATH="$PWD/node_modules" node --conditions=react-server --test /tmp/packing-tests/plan.test.js /tmp/packing-tests/decision.test.js
+```
+
+These tests cover both wardrobes and all four capacities, useful selection with spare
+space, manual overrides, no duplicated items, capacity limits, and the request passed through the real
+decision SDK with a mock provider. They do not measure the live Jev service.
+
 ## Deploy to Vercel
 
 ```bash
@@ -204,15 +229,23 @@ upload the key.
 
 ## API
 
-`POST /api/decide` with `{ "trip": "…" }` (2000 characters max):
+`POST /api/decide` with `{ "trip": "…", "bag": "cabin", "wardrobe": "women" }`
+(2000 trip characters max).
+Valid bag ids are `underseat`, `cabin`, `carryon` and `checked`; omitting `bag`
+defaults to `cabin`. Invalid capacities return status 400.
+Valid wardrobe ids are `men` (the default) and `women`; invalid wardrobes also
+return status 400. Each response echoes the selected wardrobe and reports the
+actual SDK question count, or zero for the offline fallback.
 
 ```json
 {
   "signals": { "sun": 0.43, "cold": 0.94, "snow": 0.87, "…": 0, "winter": 1, "spring": 0, "summer": 0, "autumn": 0 },
   "season": "winter",
   "temperature": 0.93,
-  "bag": "checked",
-  "bagProbabilities": { "underseat": 0, "cabin": 0, "carryon": 0.18, "checked": 0.82 },
+  "bag": "cabin",
+  "wardrobe": "women",
+  "questionCount": 60,
+  "itemScores": { "cotton-tees": 1, "linen-shirt": 0.85, "wool-coat": 0.03, "…": 0 },
   "source": "model",
   "model": "typesafe-ai/jev",
   "latencyMs": 385
@@ -230,7 +263,7 @@ src/lib/packing/catalog.ts   signals, seasons, items (litres + signal), bags, pr
 src/lib/packing/decision.ts  experimental_decide against Jev + offline fallback
 src/lib/packing/plan.ts      thresholds, capacity and overrides → packing plan (pure)
 src/lib/packing/art.ts       detects the illustrations in public/items/
-src/app/api/decide/route.ts  POST { trip } endpoint → signals
+src/app/api/decide/route.ts  POST { trip, bag, wardrobe } → trip signals + item scores
 src/components/              UI (suitcase, cards, "under the hood", debounced hook)
 ```
 
@@ -239,19 +272,31 @@ src/components/              UI (suitcase, cards, "under the hood", debounced ho
 Everything comes from [`catalog.ts`](src/lib/packing/catalog.ts); the questions sent
 to the model are generated from it.
 
-- **New item:** add `{ id, name, emoji, liters, signal }` to `ITEMS`. `signal` is a
-  signal, a season or `"basic"`.
+- **New item:** add `{ id, name, emoji, liters, signal }` to `ITEMS`.
+  Set `wardrobe: "men"` or `wardrobe: "women"` for a wardrobe-specific item; omit it
+  for shared items. Use `image` for an explicit individual illustration URL.
+  `signal` is a signal, a season or `"basic"`; volumes use at most one decimal place.
 - **New signal:** add an entry to `SIGNALS` with a `label` and a `question`, plus its
   regex in `KEYWORDS` in `decision.ts` for the fallback.
-- **Thresholds:** `BASE_THRESHOLD`, `PACK_LIGHT_THRESHOLD` and `SEASON_THRESHOLD` in `plan.ts`.
-- **Presets:** `PRESETS` in `catalog.ts`.
+- **Suitability threshold:** `ITEM_SCORE_THRESHOLD` in `plan.ts`. The other signal
+  thresholds support planning without per-item scores.
+- **Presets:** `PRESETS` in `catalog.ts`: four seasonal city examples, Málaga
+  (summer), Hamburg (autumn), Vienna (winter) and Kyoto (spring).
 
 ## Illustrations
 
-Until there are images, items show an emoji. Save each illustration as
-`public/items/<id>.png` (`.webp`, `.svg` and `.jpg` also work) and it replaces the
-emoji automatically. Recommended format: square PNG with a transparent background,
-about 256×256.
+The original 44 items have distinct illustrations in
+`public/illustrations/packing-atlas.png`. Two additional wardrobe items use
+`public/items/swim-shorts.png` and `public/items/formal-dress.png`.
+The atlas has six columns and eight rows;
+`src/lib/packing/illustrations.ts` maps each item id to its pixel bounds so each
+illustration stays centered without showing neighboring items. The same
+illustration appears in the cards, suitcase and unpacked list.
+
+To override an illustration, save `public/items/<id>.png` (`.webp`, `.svg` and `.jpg`
+also work). Individual files take priority over the atlas. Recommended format:
+square PNG with a transparent background, about 256×256. New items without an
+illustration still use their configured emoji as a placeholder.
 
 Suggested base prompt:
 
@@ -267,7 +312,7 @@ Suggested base prompt:
 | Autumn   | `denim-jacket`, `flannel-shirt`, `dark-jeans`, `ankle-boots`                          |
 | Winter   | `wool-coat`, `wool-scarf`, `fleece-pullover`, `winter-boots`                          |
 | Weather  | `easy-shorts`, `sandals`, `sunglasses`, `sunscreen`, `sun-hat`, `cozy-knit`, `thermal-layers`, `puffer-jacket`, `beanie-gloves`, `rain-jacket`, `tiny-umbrella` |
-| Activity | `swimwear`, `hiking-boots`, `daypack`, `little-camera`, `passport`, `travel-adapter`, `headphones`, `good-book`, `laptop`, `smart-outfit`, `dress-shoes`, `running-kit` |
+| Activity | `swimwear`, `swim-shorts`, `hiking-boots`, `daypack`, `little-camera`, `passport`, `travel-adapter`, `headphones`, `good-book`, `laptop`, `smart-outfit`, `formal-dress`, `dress-shoes`, `running-kit` |
 
 ## Troubleshooting
 
@@ -277,5 +322,7 @@ Suggested base prompt:
   the dev server (in production it is read at build time).
 - **502 error in the status line:** the model call failed. The details are in the
   server logs (`Decision failed`).
-- **"Autumn mountains" packs the puffer jacket and the beanie:** Jev puts snow at 77%
-  for 3°C in the Highlands. You can refine the `snow` question or raise its threshold.
+- **A capacity or wardrobe change is waiting:** enable Live so the selection is
+  sent to the model. Paused mode does not issue requests.
+- **Space remains:** capacity is an upper limit. The app packs useful items and
+  leaves optional items out rather than adding duplicates to fill the bag.

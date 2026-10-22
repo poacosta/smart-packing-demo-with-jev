@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { BagId, WardrobeId } from "@/lib/packing/catalog";
 import type { DecideError, DecideResponse } from "@/lib/packing/types";
 
 export type DecisionStatus = "idle" | "thinking" | "ready" | "error";
@@ -8,10 +9,10 @@ export type DecisionStatus = "idle" | "thinking" | "ready" | "error";
 const DEBOUNCE_MS = 350;
 
 /**
- * Re-asks the decision model whenever the trip text settles. In-flight requests are aborted
- * as soon as the text changes, so the bag always reflects the latest words.
+ * Re-asks the decision model when the trip, capacity or wardrobe changes.
+ * Aborts superseded requests so an older plan cannot replace the latest one.
  */
-export function useDecision(trip: string, live: boolean) {
+export function useDecision(trip: string, bag: BagId, wardrobe: WardrobeId, live: boolean) {
   const [decision, setDecision] = useState<DecideResponse | null>(null);
   const [status, setStatus] = useState<DecisionStatus>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -27,10 +28,11 @@ export function useDecision(trip: string, live: boolean) {
         const res = await fetch("/api/decide", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ trip: text }),
+          body: JSON.stringify({ trip: text, bag, wardrobe }),
           signal: controller.signal,
         });
         const data = (await res.json()) as DecideResponse | DecideError;
+        if (controller.signal.aborted) return;
         if ("error" in data) throw new Error(data.error);
         setDecision(data);
         setError(null);
@@ -46,7 +48,7 @@ export function useDecision(trip: string, live: boolean) {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [trip, live]);
+  }, [trip, bag, wardrobe, live]);
 
   return { decision, status, error };
 }

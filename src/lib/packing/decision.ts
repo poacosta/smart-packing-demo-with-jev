@@ -2,8 +2,9 @@ import "server-only";
 
 import { experimental_decide as decide, type Experimental_DecisionQuestion } from "ai";
 import {
-  BAG_IDS,
   BAGS,
+  getWardrobeItems,
+  WARDROBES,
   SEASON_IDS,
   SEASONS,
   SIGNAL_IDS,
@@ -13,6 +14,7 @@ import {
   type SeasonId,
   type SignalId,
   type Signals,
+  type WardrobeId,
 } from "./catalog";
 import type { DecideResponse } from "./types";
 
@@ -25,8 +27,25 @@ const signalQuestions = Object.fromEntries(
   ]),
 ) as Record<SignalId, { type: "boolean"; instructions: string }>;
 
-const questions = {
-  ...signalQuestions,
+const ITEM_SCORE_CRITERIA = [
+  "Not appropriate for this trip; leave it at home even if there is space",
+  "Optional; leave it out unless the traveller explicitly adds it",
+  "Useful for the planned weather or activities",
+  "Important for this trip",
+  "Essential for this trip",
+];
+
+const itemQuestionKey = (id: string): `item_${string}` => `item_${id.replaceAll("-", "_")}`;
+
+const getItemQuestions = (wardrobe: WardrobeId) => Object.fromEntries(
+  getWardrobeItems(wardrobe).map((item) => [itemQuestionKey(item.id), {
+    type: "score",
+    instructions: `How useful is ${item.name} (${item.liters} litres per unit) for this trip, given the selected capacity? Recommend what the traveller needs for the weather and activities. Capacity is an upper limit, not a target: leave spare space rather than adding unnecessary items or extra clothing units.`,
+    criteria: ITEM_SCORE_CRITERIA,
+  }]),
+) as Record<`item_${string}`, { type: "score"; instructions: string; criteria: string[] }>;
+
+const tripQuestions = {
   season: {
     type: "choice",
     instructions:
@@ -41,17 +60,7 @@ const questions = {
     instructions: "What is the typical temperature during the trip?",
     criteria: [...TEMPERATURE_LEVELS],
   },
-  bag: {
-    type: "choice",
-    instructions: "Which bag fits this trip best?",
-    criteria: Object.fromEntries(BAG_IDS.map((id) => [id, BAGS[id].description])) as Record<
-      BagId,
-      string
-    >,
-  },
 } satisfies Record<string, Experimental_DecisionQuestion>;
-
-export const QUESTION_COUNT = Object.keys(questions).length;
 
 export function hasGatewayCredentials() {
   return Boolean(process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN);
@@ -63,18 +72,35 @@ function oneHot<K extends string>(ids: readonly K[], picked: K): Record<K, numbe
 }
 
 /** Ask Jev every packing question about the trip in a single call. */
-export async function decideTrip(trip: string, abortSignal?: AbortSignal): Promise<DecideResponse> {
+export async function decideTrip(
+  trip: string,
+  bag: BagId = "cabin",
+  wardrobe: WardrobeId = "men",
+  abortSignal?: AbortSignal,
+  model: Parameters<typeof decide>[0]["model"] = DECISION_MODEL,
+): Promise<DecideResponse> {
   const started = performance.now();
+  const questions: typeof signalQuestions & ReturnType<typeof getItemQuestions> & typeof tripQuestions = {
+    ...signalQuestions,
+    ...getItemQuestions(wardrobe),
+    ...tripQuestions,
+  };
   const result = await decide({
-    model: DECISION_MODEL,
-    state: { trip },
+    model,
+    state: {
+      trip,
+      capacityLiters: BAGS[bag].liters,
+      wardrobe,
+      wardrobePreference: WARDROBES[wardrobe].description,
+      packingGoal: "Pack useful items for the trip within the selected capacity. The bag may remain partly empty. Do not add optional items or extra clothing units just to fill space.",
+    },
     questions,
     abortSignal,
     maxRetries: 1,
   });
   const latencyMs = Math.round(performance.now() - started);
 
-  const { season, temperature, bag } = result.answers;
+  const { season, temperature } = result.answers;
   const seasons = {
     ...oneHot(SEASON_IDS, season.choice),
     ...season.probabilities,
@@ -89,8 +115,13 @@ export async function decideTrip(trip: string, abortSignal?: AbortSignal): Promi
     signals,
     season: season.choice,
     temperature: temperature.score,
-    bag: bag.choice,
-    bagProbabilities: bag.probabilities,
+    bag,
+    wardrobe,
+    questionCount: Object.keys(questions).length,
+    itemScores: Object.fromEntries(getWardrobeItems(wardrobe).map((item) => [
+      item.id,
+      Math.max(0, Math.min(1, result.answers[itemQuestionKey(item.id)].score / (ITEM_SCORE_CRITERIA.length - 1))),
+    ])),
     source: "model",
     model: result.response?.modelId ?? DECISION_MODEL,
     latencyMs,
@@ -125,7 +156,11 @@ const SEASON_KEYWORDS: Record<SeasonId, RegExp> = {
   autumn: /\b(autumn|fall|september|october|november)/i,
 };
 
-export function decideOffline(trip: string): DecideResponse {
+export function decideOffline(
+  trip: string,
+  bag: BagId = "cabin",
+  wardrobe: WardrobeId = "men",
+): DecideResponse {
   const started = performance.now();
   const flags = Object.fromEntries(
     SIGNAL_IDS.map((id) => [id, KEYWORDS[id].test(trip) ? 0.85 : 0.1]),
@@ -135,17 +170,18 @@ export function decideOffline(trip: string): DecideResponse {
   const season = SEASON_IDS.find((id) => SEASON_KEYWORDS[id].test(trip)) ?? "summer";
   const temperature =
     flags.snow > 0.5 ? 0.5 : flags.cold > 0.5 ? 1.5 : flags.sun > 0.5 ? 3.6 : 2.5;
-  const days = Number(
-    /(\d+)\s*(days|nights)/i.exec(trip)?.[1] ?? (/weekend/i.test(trip) ? 3 : /week/i.test(trip) ? 7 : 5),
-  );
-  const bag: BagId =
-    flags.snow > 0.5 || days > 9 ? "checked" : days > 6 || flags.hiking > 0.5 ? "carryon" : days <= 2 ? "underseat" : "cabin";
+  const signals: Signals = { ...flags, ...oneHot(SEASON_IDS, season) };
 
   return {
-    signals: { ...flags, ...oneHot(SEASON_IDS, season) },
+    signals,
     season,
     temperature,
     bag,
+    wardrobe,
+    questionCount: 0,
+    itemScores: Object.fromEntries(getWardrobeItems(wardrobe).map((item) => [
+      item.id, item.signal === "basic" ? 1 : signals[item.signal],
+    ])),
     source: "offline",
     model: "keyword heuristic",
     latencyMs: Math.round(performance.now() - started),

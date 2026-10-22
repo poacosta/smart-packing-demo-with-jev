@@ -17,7 +17,7 @@ export function ItemCard({
   planned: PlannedItem;
   onToggle: () => void;
 }) {
-  const { item, status, reason, why } = planned;
+  const { item, quantity, status, reason, why } = planned;
   const packed = status === "packed";
 
   return (
@@ -29,7 +29,14 @@ export function ItemCard({
       className={`group relative flex h-[92px] items-center gap-3 rounded-xl border px-3 text-left transition-colors duration-300 hover:border-leaf/50 focus-visible:outline-2 focus-visible:outline-leaf ${STYLES[status]}`}
     >
       <ItemArt item={item} size={50} />
-      <span className="text-sm leading-tight">{item.name}</span>
+      <span className="pr-3 text-sm leading-tight">
+        {item.name}
+        {quantity > 1 && (
+          <span className="ml-1.5 inline-block rounded bg-leaf/10 px-1 py-0.5 text-[11px] font-semibold text-leaf">
+            ×{quantity}
+          </span>
+        )}
+      </span>
 
       <span
         aria-hidden
@@ -40,8 +47,8 @@ export function ItemCard({
         {packed ? "✓" : "+"}
       </span>
 
-      <span className="absolute bottom-1.5 left-3 text-[10px] text-muted">
-        {status === "no-room" ? `${reason} · no room` : status === "removed" ? "Taken out" : reason}
+      <span className="absolute right-7 bottom-1.5 left-3 text-right text-xs text-muted">
+        {status === "no-room" ? `${reason} · no room` : status === "removed" ? "Taken out" : packed ? `${(quantity * item.liters).toFixed(1)} L · ${reason}` : reason}
       </span>
       <span
         aria-hidden

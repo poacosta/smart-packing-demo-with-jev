@@ -132,13 +132,25 @@ export const BAGS = {
 export type BagId = keyof typeof BAGS;
 export const BAG_IDS = Object.keys(BAGS) as BagId[];
 
+export const WARDROBES = {
+  men: { label: "Men", description: "Men's clothing, including shared and unisex items" },
+  women: { label: "Women", description: "Women's clothing, including shared and unisex items" },
+} as const;
+
+export type WardrobeId = keyof typeof WARDROBES;
+export const WARDROBE_IDS = Object.keys(WARDROBES) as WardrobeId[];
+
 export type Item = {
   id: string;
   name: string;
   /** Placeholder art until /public/items/<id>.png exists. */
   emoji: string;
+  /** Optional individual illustration, independent of atlas discovery. */
+  image?: string;
   /** Volume in litres once packed. */
   liters: number;
+  /** Omit for items shared by both wardrobe options. */
+  wardrobe?: WardrobeId;
   /** "basic" items always go in unless the traveller removes them. */
   signal: TripSignalId | "basic";
 };
@@ -154,7 +166,7 @@ export const ITEMS: Item[] = [
 
   // Summer wardrobe
   { id: "linen-shirt", name: "Linen shirt", emoji: "👔", liters: 1, signal: "summer" },
-  { id: "summer-dress", name: "Summer dress", emoji: "👗", liters: 1, signal: "summer" },
+  { id: "summer-dress", name: "Summer dress", emoji: "👗", liters: 1, wardrobe: "women", signal: "summer" },
   { id: "tank-tops", name: "Tank tops", emoji: "🎽", liters: 0.6, signal: "summer" },
   { id: "linen-trousers", name: "Linen trousers", emoji: "👖", liters: 1.2, signal: "summer" },
 
@@ -190,7 +202,8 @@ export const ITEMS: Item[] = [
   { id: "tiny-umbrella", name: "Tiny umbrella", emoji: "☂️", liters: 0.5, signal: "rain" },
 
   // Activities & travel
-  { id: "swimwear", name: "Swimwear", emoji: "🩱", liters: 0.4, signal: "swimming" },
+  { id: "swimwear", name: "Swimwear", emoji: "🩱", liters: 0.4, wardrobe: "women", signal: "swimming" },
+  { id: "swim-shorts", name: "Swim shorts", emoji: "🩳", image: "/items/swim-shorts.png", liters: 0.4, wardrobe: "men", signal: "swimming" },
   { id: "hiking-boots", name: "Hiking boots", emoji: "🥾", liters: 4, signal: "hiking" },
   { id: "daypack", name: "Daypack", emoji: "🎒", liters: 2, signal: "hiking" },
   { id: "little-camera", name: "Little camera", emoji: "📷", liters: 1, signal: "exploring" },
@@ -199,40 +212,39 @@ export const ITEMS: Item[] = [
   { id: "headphones", name: "Headphones", emoji: "🎧", liters: 1, signal: "flying" },
   { id: "good-book", name: "A good book", emoji: "📕", liters: 0.8, signal: "reading" },
   { id: "laptop", name: "Laptop", emoji: "💻", liters: 2.5, signal: "work" },
-  { id: "smart-outfit", name: "Smart outfit", emoji: "🤵", liters: 3, signal: "formal" },
+  { id: "smart-outfit", name: "Smart outfit", emoji: "🤵", liters: 3, wardrobe: "men", signal: "formal" },
+  { id: "formal-dress", name: "Formal dress", emoji: "👗", image: "/items/formal-dress.png", liters: 1.5, wardrobe: "women", signal: "formal" },
   { id: "dress-shoes", name: "Dress shoes", emoji: "👞", liters: 2.5, signal: "formal" },
   { id: "running-kit", name: "Running kit", emoji: "🏃", liters: 1.5, signal: "fitness" },
 ];
 
+export function getWardrobeItems(wardrobe: WardrobeId): Item[] {
+  return ITEMS.filter((item) => !item.wardrobe || item.wardrobe === wardrobe);
+}
+
 export const PRESETS = [
   {
     id: "summer",
-    label: "Summer escape",
+    label: "Málaga · summer",
     icon: "☀",
-    text: "Five days on the coast of Portugal in July. Flying from London. Beach swimming, reading and long seaside walks. Around 28°C, no rain expected. I want to pack light.",
+    text: "Five days in Málaga in July for a summer beach break, flying from London. Sunny days around 28°C, swimming, reading and long seaside walks. I want to pack light.",
   },
   {
     id: "autumn",
-    label: "Autumn mountains",
+    label: "Hamburg · autumn",
     icon: "△",
-    text: "A long weekend hiking in the Scottish Highlands in late October, driving up from Edinburgh. Nights drop to 3°C and showers are forecast. Long trail days and a cosy pub in the evening.",
+    text: "Four days in Hamburg in October for an autumn city break, travelling by train from Berlin. Plan for cool days around 12°C, wind and rain. Harbour walks, museums, coffee houses and lots of photos.",
   },
   {
     id: "winter",
-    label: "Winter markets",
+    label: "Vienna · winter",
     icon: "❄",
     text: "A week in Vienna in mid-December for the Christmas markets, flying from Madrid. Expect snow and around -2°C. Museums, coffee houses and a night at the opera.",
   },
   {
     id: "spring",
-    label: "Spring blossoms",
+    label: "Kyoto · spring",
     icon: "✿",
     text: "Six days in Kyoto in early April for the cherry blossoms, flying from New York. Mild days around 16°C with the odd shower. Temples, gardens and lots of photos.",
-  },
-  {
-    id: "hemisphere",
-    label: "July in Patagonia",
-    icon: "◒",
-    text: "Ten days in Patagonia in July, flying from Miami. Glacier walks, windy trails and cosy lodges. I'd rather check one big bag.",
   },
 ] as const;

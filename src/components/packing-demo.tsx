@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { BAG_IDS, BAGS, PRESETS, SEASONS, TEMPERATURE_LEVELS, type BagId } from "@/lib/packing/catalog";
+import { useMemo, useRef, useState } from "react";
+import { BAG_IDS, BAGS, getWardrobeItems, PRESETS, SEASONS, TEMPERATURE_LEVELS, WARDROBES, WARDROBE_IDS, type BagId, type WardrobeId } from "@/lib/packing/catalog";
 import { computePlan, isRelevant, type Overrides } from "@/lib/packing/plan";
 import { ItemArt, ItemArtContext } from "./item-art";
 import { ItemCard } from "./item-card";
@@ -12,22 +12,32 @@ import { useDecision } from "./use-decision";
 export function PackingDemo({ art }: { art: Record<string, string> }) {
   const [trip, setTrip] = useState<string>(PRESETS[0].text);
   const [live, setLive] = useState(true);
-  const [bagChoice, setBagChoice] = useState<BagId | "auto">("auto");
+  const [bagId, setBagId] = useState<BagId>("cabin");
   const [overrides, setOverrides] = useState<Overrides>({});
   const [showHood, setShowHood] = useState(false);
+  const [wardrobe, setWardrobe] = useState<WardrobeId>("men");
+  const wardrobeTabs = useRef<Record<WardrobeId, HTMLButtonElement | null>>({ men: null, women: null });
 
-  const { decision, status, error } = useDecision(trip, live);
-  const bagId: BagId = bagChoice === "auto" ? (decision?.bag ?? "cabin") : bagChoice;
+  const { decision: response, status, error } = useDecision(trip, bagId, wardrobe, live);
+  const decision = response?.bag === bagId && response.wardrobe === wardrobe ? response : null;
 
   const plan = useMemo(
-    () => computePlan(decision?.signals ?? null, bagId, overrides),
-    [decision, bagId, overrides],
+    () => computePlan(decision?.signals ?? null, bagId, overrides, decision?.itemScores ?? null, wardrobe),
+    [decision, bagId, overrides, wardrobe],
   );
   const cards = plan.items.filter(isRelevant);
   const leftOut = plan.items.filter((p) => !isRelevant(p));
 
   const toggle = (id: string, packed: boolean) =>
     setOverrides((prev) => ({ ...prev, [id]: packed ? "out" : "in" }));
+
+  const chooseWardrobe = (next: WardrobeId) => {
+    setWardrobe(next);
+    const compatible = new Set(getWardrobeItems(next).map((item) => item.id));
+    setOverrides((previous) => Object.fromEntries(
+      Object.entries(previous).filter(([id]) => compatible.has(id)),
+    ));
+  };
 
   const climate =
     decision != null
@@ -79,7 +89,7 @@ export function PackingDemo({ art }: { art: Record<string, string> }) {
           />
 
           <div className="mt-2 flex justify-between gap-4 text-[11px] text-muted">
-            <span>Change the weather, destination or plans. Watch your bag react.</span>
+            <span>Choose your bag, describe the trip. Jev packs what you need.</span>
             <span className={status === "error" ? "text-clay" : ""}>
               {!live
                 ? "Paused"
@@ -90,6 +100,38 @@ export function PackingDemo({ art }: { art: Record<string, string> }) {
                     : "Updates as you type"}
             </span>
           </div>
+
+          <div className="mt-3 flex items-center gap-3">
+            <span className="text-[10px] tracking-[0.15em] text-muted uppercase">Wardrobe</span>
+            <div role="tablist" aria-label="Wardrobe" className="inline-flex gap-1 rounded-full border border-line bg-paper/70 p-1">
+              {WARDROBE_IDS.map((id) => (
+                <button
+                  key={id}
+                  ref={(node) => { wardrobeTabs.current[id] = node; }}
+                  id={`wardrobe-tab-${id}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={wardrobe === id}
+                  aria-controls="wardrobe-panel"
+                  tabIndex={wardrobe === id ? 0 : -1}
+                  onClick={() => chooseWardrobe(id)}
+                  onKeyDown={(event) => {
+                    let next: WardrobeId;
+                    if (event.key === "ArrowLeft" || event.key === "ArrowRight") next = id === "men" ? "women" : "men";
+                    else if (event.key === "Home") next = "men";
+                    else if (event.key === "End") next = "women";
+                    else return;
+                    event.preventDefault();
+                    chooseWardrobe(next);
+                    wardrobeTabs.current[next]?.focus();
+                  }}
+                  className={`rounded-full px-5 py-1.5 text-xs transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-leaf ${wardrobe === id ? "bg-leaf text-white shadow-sm" : "text-muted hover:bg-panel hover:text-ink"}`}
+                >
+                  {WARDROBES[id].label}
+                </button>
+              ))}
+            </div>
+          </div>
         </section>
 
         {decision?.source === "offline" && (
@@ -99,7 +141,13 @@ export function PackingDemo({ art }: { art: Record<string, string> }) {
           </p>
         )}
 
-        <div className="grid gap-5 lg:grid-cols-[minmax(320px,400px)_1fr]">
+        <div
+          id="wardrobe-panel"
+          role="tabpanel"
+          aria-labelledby={`wardrobe-tab-${wardrobe}`}
+          tabIndex={0}
+          className="grid gap-5 rounded-2xl focus-visible:outline-2 focus-visible:outline-leaf lg:grid-cols-[minmax(320px,400px)_1fr]"
+        >
           {/* Bag */}
           <section className="self-start rounded-2xl border border-line bg-[#e9e6da] p-5">
             <div className="flex items-start justify-between gap-3">
@@ -108,21 +156,21 @@ export function PackingDemo({ art }: { art: Record<string, string> }) {
                 <h1 className="font-serif text-3xl italic">Your next adventure</h1>
                 {climate && <p className="mt-1 text-xs text-muted">≈ {climate}</p>}
               </div>
-              <select
-                value={bagChoice}
-                onChange={(e) => setBagChoice(e.target.value as BagId | "auto")}
-                className="rounded-lg border border-line bg-panel px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-leaf/30"
-                aria-label="Bag size"
-              >
-                <option value="auto">
-                  Jev picks{decision ? ` · ${BAGS[decision.bag].liters} L` : ""}
-                </option>
-                {BAG_IDS.map((id) => (
-                  <option key={id} value={id}>
-                    {BAGS[id].label}
-                  </option>
-                ))}
-              </select>
+              <label className="flex shrink-0 flex-col gap-1 text-[10px] text-muted">
+                Bag capacity
+                <select
+                  value={bagId}
+                  onChange={(e) => setBagId(e.target.value as BagId)}
+                  className="rounded-lg border border-line bg-panel px-2 py-1.5 text-xs text-ink outline-none focus:ring-2 focus:ring-leaf/30"
+                  aria-label="Bag size"
+                >
+                  {BAG_IDS.map((id) => (
+                    <option key={id} value={id}>
+                      {BAGS[id].label}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
 
             <div className="mt-4">
@@ -145,7 +193,7 @@ export function PackingDemo({ art }: { art: Record<string, string> }) {
                   </button>
                 )}
                 <span className="hidden text-[10px] tracking-[0.2em] text-muted uppercase sm:inline">
-                  Basics + Jev trip signals
+                  Jev picks for {BAGS[bagId].liters} L
                 </span>
               </div>
             </div>
@@ -187,7 +235,7 @@ export function PackingDemo({ art }: { art: Record<string, string> }) {
 
         {showHood && (
           <section className="rounded-2xl border border-line bg-panel p-5">
-            <UnderTheHood decision={decision} threshold={plan.threshold} />
+            <UnderTheHood decision={decision} />
           </section>
         )}
 

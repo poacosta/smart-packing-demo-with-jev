@@ -1,12 +1,13 @@
 import {
   BAGS,
-  ITEMS,
+  getWardrobeItems,
   SEASONS,
   signalLabel,
   type BagId,
   type Item,
   type Signals,
   type TripSignalId,
+  type WardrobeId,
 } from "./catalog";
 
 export type Override = "in" | "out";
@@ -24,6 +25,8 @@ export type ItemStatus =
 
 export type PlannedItem = {
   item: Item;
+  /** Number of packed units; zero when the item is left out. */
+  quantity: number;
   /** Probability of the item's signal; null for basic kit. */
   probability: number | null;
   status: ItemStatus;
@@ -47,6 +50,7 @@ const PACK_LIGHT_THRESHOLD = 0.6;
 // Seasons share one choice distribution, so a shoulder-season trip
 // (e.g. 55% spring, 40% summer) should still get some of both wardrobes.
 const SEASON_THRESHOLD = 0.35;
+const ITEM_SCORE_THRESHOLD = 0.5;
 /** Below this, an item isn't worth showing as a card. */
 export const RELEVANCE_FLOOR = 0.15;
 
@@ -56,6 +60,8 @@ export function computePlan(
   signals: Signals | null,
   bagId: BagId,
   overrides: Overrides,
+  itemScores: Record<string, number> | null = null,
+  wardrobe: WardrobeId = "men",
 ): Plan {
   const capacity = BAGS[bagId].liters;
   const threshold =
@@ -64,33 +70,80 @@ export function computePlan(
   const thresholdFor = (signal: TripSignalId) =>
     signal in SEASONS ? SEASON_THRESHOLD : threshold;
 
-  const rows = ITEMS.map((item) => {
+  const rows = getWardrobeItems(wardrobe).map((item) => {
     const probability =
       item.signal === "basic" || !signals ? null : signals[item.signal];
     const override = overrides[item.id];
+    const score = itemScores?.[item.id];
     const wanted =
       override === "in" ||
       (override !== "out" &&
         (item.signal === "basic" ||
-          (probability ?? 0) >= thresholdFor(item.signal)));
-    // Your picks first, then basics, then the strongest signals.
+          (score != null
+            ? score >= ITEM_SCORE_THRESHOLD
+            : (probability ?? 0) >= thresholdFor(item.signal))));
+    // User picks reserve space before basics.
     const priority =
-      override === "in" ? 3 : item.signal === "basic" ? 2 : (probability ?? 0);
-    return { item, probability, override, wanted, priority };
+      override === "in" ? 3 : item.signal === "basic" ? 2 : (score ?? probability ?? 0);
+    return { item, probability, score, override, wanted, priority };
   });
 
-  const packedIds = new Set<string>();
-  let usedLiters = 0;
+  // Reserve one unit of user picks and basics before selecting useful items.
+  // Integer decilitres avoid rounding errors in the capacity search.
+  const quantities = new Map<string, number>();
+  const capacityUnits = Math.round(capacity * 10);
+  let reservedUnits = 0;
   for (const row of [...rows].sort((a, b) => b.priority - a.priority)) {
-    if (!row.wanted) continue;
-    if (usedLiters + row.item.liters <= capacity + 1e-9) {
-      usedLiters += row.item.liters;
-      packedIds.add(row.item.id);
+    if (!row.wanted || (row.override !== "in" && row.item.signal !== "basic")) continue;
+    const units = Math.round(row.item.liters * 10);
+    if (reservedUnits + units <= capacityUnits) {
+      reservedUnits += units;
+      quantities.set(row.item.id, 1);
     }
   }
 
-  const items = rows.map(({ item, probability, override, wanted }): PlannedItem => {
-    const status: ItemStatus = packedIds.has(item.id)
+  type Fill = { utility: number; previous: Fill | null; id: string; quantity: number };
+  const remaining = capacityUnits - reservedUnits;
+  let fills: (Fill | undefined)[] = Array(remaining + 1);
+  fills[0] = { utility: 0, previous: null, id: "", quantity: 0 };
+
+  if (signals) {
+    for (const row of rows) {
+      if (!row.wanted) continue;
+      const existing = quantities.get(row.item.id) ?? 0;
+      const units = Math.round(row.item.liters * 10);
+      const limit = 1 - existing;
+      const next = [...fills];
+      const suitability = Math.max(row.score ?? row.probability ?? 1, 0.01);
+      for (let used = 0; used <= remaining; used++) {
+        const previous = fills[used];
+        if (!previous) continue;
+        let utility = previous.utility;
+        for (let count = 1; count <= limit && used + count * units <= remaining; count++) {
+          utility += suitability;
+          const total = used + count * units;
+          if (!next[total] || utility > next[total]!.utility) {
+            next[total] = { utility, previous, id: row.item.id, quantity: count };
+          }
+        }
+      }
+      fills = next;
+    }
+  }
+
+  // Capacity is a limit, not a target. Prefer usefulness, then less luggage.
+  let filledUnits = 0;
+  for (let used = 1; used <= remaining; used++) {
+    if (fills[used] && fills[used]!.utility > fills[filledUnits]!.utility) filledUnits = used;
+  }
+  for (let fill = fills[filledUnits]; fill?.previous; fill = fill.previous) {
+    quantities.set(fill.id, (quantities.get(fill.id) ?? 0) + fill.quantity);
+  }
+  const usedLiters = (reservedUnits + filledUnits) / 10;
+
+  const items = rows.map(({ item, probability, score, override, wanted }): PlannedItem => {
+    const quantity = quantities.get(item.id) ?? 0;
+    const status: ItemStatus = quantity > 0
       ? "packed"
       : override === "out"
         ? "removed"
@@ -103,20 +156,26 @@ export function computePlan(
         ? "Your pick"
         : item.signal === "basic"
           ? "Basic kit"
-          : probability == null
-            ? "—"
-            : `${pct(probability)} ${signalLabel(item.signal)}`;
+          : score != null
+            ? `${pct(score)} trip fit`
+            : probability == null
+              ? "—"
+              : `${pct(probability)} ${signalLabel(item.signal)}`;
 
     let why: string;
     if (override === "in") why = "You added this one.";
     else if (override === "out") why = "You took this out. Tap to pack it again.";
     else if (item.signal === "basic") why = "Basic kit: goes on every trip.";
+    else if (score != null)
+      why = `Suitability for this trip and ${capacity} L capacity: ${pct(score)}. Appropriate items are considered from ${pct(ITEM_SCORE_THRESHOLD)}.`;
     else if (probability == null) why = "Waiting for Jev.";
     else
       why = `Jev: ${pct(probability)} chance of “${signalLabel(item.signal)}”. Packs at ${pct(thresholdFor(item.signal))} or more.`;
     if (status === "no-room") why += ` No room left in the ${capacity} L bag.`;
+    if (quantity > 0)
+      why += ` Packed: ${quantity} ${quantity === 1 ? "unit" : "units"}, ${(quantity * item.liters).toFixed(1)} L in total.`;
 
-    return { item, probability, status, override, reason, why };
+    return { item, quantity, probability, status, override, reason, why };
   });
 
   return {
