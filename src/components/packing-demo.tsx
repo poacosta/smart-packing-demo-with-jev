@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
-import { BAG_IDS, BAGS, getWardrobeItems, PRESETS, SEASONS, TEMPERATURE_LEVELS, WARDROBES, WARDROBE_IDS, type BagId, type WardrobeId } from "@/lib/packing/catalog";
+import { useMemo, useState } from "react";
+import { BAG_IDS, BAGS, PRESETS, type BagId } from "@/lib/packing/catalog";
 import { computePlan, isRelevant, type Overrides } from "@/lib/packing/plan";
 import { ItemArt, ItemArtContext } from "./item-art";
 import { ItemCard } from "./item-card";
@@ -15,15 +15,12 @@ export function PackingDemo({ art }: { art: Record<string, string> }) {
   const [live, setLive] = useState(true);
   const [bagId, setBagId] = useState<BagId>("cabin");
   const [overrides, setOverrides] = useState<Overrides>({});
-  const [wardrobe, setWardrobe] = useState<WardrobeId>("men");
-  const wardrobeTabs = useRef<Record<WardrobeId, HTMLButtonElement | null>>({ men: null, women: null });
-
-  const { decision: response, status, error } = useDecision(trip, bagId, wardrobe, live);
-  const decision = response?.bag === bagId && response.wardrobe === wardrobe ? response : null;
+  const { decision: response, status, error } = useDecision(trip, bagId, live);
+  const decision = response?.bag === bagId ? response : null;
 
   const plan = useMemo(
-    () => computePlan(decision?.signals ?? null, bagId, overrides, decision?.itemScores ?? null, wardrobe),
-    [decision, bagId, overrides, wardrobe],
+    () => computePlan(decision?.signals ?? null, bagId, overrides, decision?.itemScores ?? null),
+    [decision, bagId, overrides],
   );
   const cards = plan.items.filter(isRelevant);
   const leftOut = plan.items.filter((p) => !isRelevant(p));
@@ -31,17 +28,6 @@ export function PackingDemo({ art }: { art: Record<string, string> }) {
   const toggle = (id: string, packed: boolean) =>
     setOverrides((prev) => ({ ...prev, [id]: packed ? "out" : "in" }));
 
-  const chooseWardrobe = (next: WardrobeId) => {
-    setWardrobe(next);
-    const compatible = new Set(getWardrobeItems(next).map((item) => item.id));
-    setOverrides((previous) => Object.fromEntries(
-      Object.entries(previous).filter(([id]) => compatible.has(id)),
-    ));
-  };
-
-  const climate = decision
-    ? `${SEASONS[decision.season].label} · ${TEMPERATURE_LEVELS[Math.round(decision.temperature)].toLowerCase()}`
-    : null;
   const statusMessage = !live
     ? "Paused"
     : status === "thinking"
@@ -95,43 +81,10 @@ export function PackingDemo({ art }: { art: Record<string, string> }) {
             placeholder="Destination, dates, weather and plans"
             className="w-full resize-y rounded-lg border border-line bg-paper px-4 py-3 text-base leading-relaxed outline-none placeholder:text-muted focus:border-leaf focus:ring-2 focus:ring-leaf/30"
           />
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-4">
-            <div className="flex flex-col items-start gap-1.5 sm:flex-row sm:items-center sm:gap-3">
-              <span className="text-sm font-medium">Wardrobe</span>
-              <div role="tablist" aria-label="Wardrobe" className="inline-flex rounded-lg border border-line p-1">
-                {WARDROBE_IDS.map((id) => (
-                  <button
-                    key={id}
-                    ref={(node) => { wardrobeTabs.current[id] = node; }}
-                    id={`wardrobe-tab-${id}`}
-                    type="button"
-                    role="tab"
-                    aria-selected={wardrobe === id}
-                    aria-controls="wardrobe-panel"
-                    tabIndex={wardrobe === id ? 0 : -1}
-                    onClick={() => chooseWardrobe(id)}
-                    onKeyDown={(event) => {
-                      let next: WardrobeId;
-                      if (event.key === "ArrowLeft" || event.key === "ArrowRight") next = id === "men" ? "women" : "men";
-                      else if (event.key === "Home") next = "men";
-                      else if (event.key === "End") next = "women";
-                      else return;
-                      event.preventDefault();
-                      chooseWardrobe(next);
-                      wardrobeTabs.current[next]?.focus();
-                    }}
-                    className={`min-h-10 rounded-md px-4 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-leaf ${wardrobe === id ? "bg-leaf text-white" : "text-muted hover:bg-paper"}`}
-                  >
-                    {WARDROBES[id].label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
           <JevRequest decision={decision} statusMessage={statusMessage} isError={status === "error"} />
         </section>
 
-        <div id="wardrobe-panel" role="tabpanel" aria-labelledby={`wardrobe-tab-${wardrobe}`} tabIndex={0} className="grid gap-6 rounded-xl focus-visible:outline-2 focus-visible:outline-leaf lg:grid-cols-[minmax(320px,400px)_1fr]">
+        <div className="grid gap-6 lg:grid-cols-[minmax(320px,400px)_1fr]">
           <Suitcase plan={plan} onRemove={(id) => toggle(id, true)}>
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -150,7 +103,6 @@ export function PackingDemo({ art }: { art: Record<string, string> }) {
                 </select>
               </label>
             </div>
-            {climate && <p className="mt-1 text-sm text-muted">≈ {climate}</p>}
           </Suitcase>
           <section aria-labelledby="packing-heading">
             <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">

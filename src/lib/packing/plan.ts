@@ -1,13 +1,12 @@
 import {
   BAGS,
-  getWardrobeItems,
+  ITEMS,
   SEASONS,
   signalLabel,
   type BagId,
   type Item,
   type Signals,
   type TripSignalId,
-  type WardrobeId,
 } from "./catalog";
 
 export type Override = "in" | "out";
@@ -27,7 +26,7 @@ export type PlannedItem = {
   item: Item;
   /** Number of packed units; zero when the item is left out. */
   quantity: number;
-  /** Probability of the item's signal; null for basic kit. */
+  /** Model suitability, or fallback signal probability; null for basic kit. */
   probability: number | null;
   status: ItemStatus;
   override?: Override;
@@ -48,11 +47,11 @@ export type Plan = {
 const BASE_THRESHOLD = 0.5;
 const PACK_LIGHT_THRESHOLD = 0.6;
 // Seasons share one choice distribution, so a shoulder-season trip
-// (e.g. 55% spring, 40% summer) should still get some of both wardrobes.
+// (e.g. 55% spring, 40% summer) should still get some clothing from both seasons.
 const SEASON_THRESHOLD = 0.35;
 const ITEM_SCORE_THRESHOLD = 0.5;
 /** Below this, an item isn't worth showing as a card. */
-export const RELEVANCE_FLOOR = 0.15;
+export const RELEVANCE_FLOOR = ITEM_SCORE_THRESHOLD;
 
 const pct = (p: number) => `${Math.round(p * 100)}%`;
 
@@ -61,7 +60,6 @@ export function computePlan(
   bagId: BagId,
   overrides: Overrides,
   itemScores: Record<string, number> | null = null,
-  wardrobe: WardrobeId = "men",
 ): Plan {
   const capacity = BAGS[bagId].liters;
   const threshold =
@@ -70,11 +68,11 @@ export function computePlan(
   const thresholdFor = (signal: TripSignalId) =>
     signal in SEASONS ? SEASON_THRESHOLD : threshold;
 
-  const rows = getWardrobeItems(wardrobe).map((item) => {
-    const probability =
-      item.signal === "basic" || !signals ? null : signals[item.signal];
-    const override = overrides[item.id];
+  const rows = ITEMS.map((item) => {
     const score = itemScores?.[item.id];
+    const probability =
+      item.signal === "basic" || !signals ? null : score ?? signals[item.signal];
+    const override = overrides[item.id];
     const wanted =
       override === "in" ||
       (override !== "out" &&
@@ -167,7 +165,7 @@ export function computePlan(
     else if (override === "out") why = "You took this out. Tap to pack it again.";
     else if (item.signal === "basic") why = "Basic kit: goes on every trip.";
     else if (score != null)
-      why = `Suitability for this trip and ${capacity} L capacity: ${pct(score)}. Appropriate items are considered from ${pct(ITEM_SCORE_THRESHOLD)}.`;
+      why = `${item.use} Suitability for this trip and ${capacity} L capacity: ${pct(score)}. Appropriate items are considered from ${pct(ITEM_SCORE_THRESHOLD)}.`;
     else if (probability == null) why = "Waiting for Jev.";
     else
       why = `Jev: ${pct(probability)} chance of “${signalLabel(item.signal)}”. Packs at ${pct(thresholdFor(item.signal))} or more.`;

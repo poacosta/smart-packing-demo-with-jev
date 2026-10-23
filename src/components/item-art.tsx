@@ -2,7 +2,7 @@
 
 import { createContext, useContext } from "react";
 import type { Item } from "@/lib/packing/catalog";
-import { ITEM_ATLAS, ITEM_ILLUSTRATIONS } from "@/lib/packing/illustrations";
+import { ITEM_ATLAS, ITEM_ILLUSTRATIONS, WARDROBE_ATLAS, WARDROBE_ILLUSTRATIONS, UNISEX_ATLAS, UNISEX_ILLUSTRATIONS } from "@/lib/packing/illustrations";
 
 /** Item id → URL of its illustration in public/items/. */
 export const ItemArtContext = createContext<Record<string, string>>({});
@@ -10,7 +10,8 @@ export const ItemArtContext = createContext<Record<string, string>>({});
 /** Individual artwork overrides the bundled illustration for an item. */
 export function ItemArt({ item, size }: { item: Item; size: number }) {
   const src = useContext(ItemArtContext)[item.id] ?? item.image;
-  const bounds = ITEM_ILLUSTRATIONS[item.id];
+  const bounds = UNISEX_ILLUSTRATIONS[item.id] ?? ITEM_ILLUSTRATIONS[item.id] ?? WARDROBE_ILLUSTRATIONS[item.id];
+  const atlas = UNISEX_ILLUSTRATIONS[item.id] ? UNISEX_ATLAS : ITEM_ILLUSTRATIONS[item.id] ? ITEM_ATLAS : WARDROBE_ATLAS;
 
   if (!src && bounds) {
     const [left, top, width, height] = bounds;
@@ -27,8 +28,8 @@ export function ItemArt({ item, size }: { item: Item; size: number }) {
           style={{
             width: width * scale,
             height: height * scale,
-            backgroundImage: `url('${ITEM_ATLAS.src}')`,
-            backgroundSize: `${ITEM_ATLAS.width * scale}px ${ITEM_ATLAS.height * scale}px`,
+            backgroundImage: `url('${atlas.src}')`,
+            backgroundSize: `${atlas.width * scale}px ${atlas.height * scale}px`,
             backgroundPosition: `${-left * scale}px ${-top * scale}px`,
           }}
         />

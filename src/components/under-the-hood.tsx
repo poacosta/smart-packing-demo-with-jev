@@ -2,12 +2,9 @@
 
 import {
   BAGS,
-  SEASON_IDS,
-  SEASONS,
   SIGNAL_IDS,
   SIGNALS,
   TEMPERATURE_LEVELS,
-  WARDROBES,
 } from "@/lib/packing/catalog";
 import type { DecideResponse } from "@/lib/packing/types";
 
@@ -55,22 +52,6 @@ export function UnderTheHood({
       <section className="space-y-6">
         <div>
           <h3 className="mb-2 text-base font-semibold">
-            Season
-          </h3>
-          <ul className="space-y-1 text-sm">
-            {SEASON_IDS.map((id) => (
-              <li
-                key={id}
-                className={`flex justify-between ${id === decision.season ? "font-semibold" : "text-muted"}`}
-              >
-                <span className="capitalize">{SEASONS[id].label}</span>
-                <span className="tabular-nums">{pct(decision.signals[id])}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-        <div>
-          <h3 className="mb-2 text-base font-semibold">
             Temperature
           </h3>
           <p className="text-lg">{tempLevel}</p>
@@ -83,7 +64,6 @@ export function UnderTheHood({
             Bag
           </h3>
           <p className="text-sm">{BAGS[decision.bag].label}</p>
-          <p className="mt-1 text-sm">{WARDROBES[decision.wardrobe].label} wardrobe</p>
         </div>
         <p className="text-sm text-muted">
           {decision.source === "model"

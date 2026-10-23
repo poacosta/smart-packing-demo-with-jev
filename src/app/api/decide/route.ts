@@ -1,5 +1,5 @@
 import { decideOffline, decideTrip, hasGatewayCredentials } from "@/lib/packing/decision";
-import { BAGS, WARDROBES, type BagId, type WardrobeId } from "@/lib/packing/catalog";
+import { BAGS, type BagId } from "@/lib/packing/catalog";
 import type { DecideError, DecideResponse } from "@/lib/packing/types";
 
 // Plenty for a trip description; keeps requests small and cheap.
@@ -7,7 +7,7 @@ const MAX_TRIP_CHARS = 2000;
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as {
-    trip?: unknown; bag?: unknown; wardrobe?: unknown;
+    trip?: unknown; bag?: unknown;
   } | null;
   const trip = typeof body?.trip === "string" ? body.trip.trim().slice(0, MAX_TRIP_CHARS) : "";
   if (!trip) {
@@ -24,20 +24,12 @@ export async function POST(request: Request) {
   }
   const bagId = bag as BagId;
 
-  const wardrobe = body?.wardrobe === undefined ? "men" : body.wardrobe;
-  if (typeof wardrobe !== "string" || !Object.hasOwn(WARDROBES, wardrobe)) {
-    return Response.json({ error: "Choose a valid wardrobe." } satisfies DecideError, {
-      status: 400,
-    });
-  }
-  const wardrobeId = wardrobe as WardrobeId;
-
   if (!hasGatewayCredentials()) {
-    return Response.json(decideOffline(trip, bagId, wardrobeId) satisfies DecideResponse);
+    return Response.json(decideOffline(trip, bagId) satisfies DecideResponse);
   }
 
   try {
-    const result = await decideTrip(trip, bagId, wardrobeId, request.signal);
+    const result = await decideTrip(trip, bagId, request.signal);
     return Response.json(result satisfies DecideResponse);
   } catch (error) {
     if (request.signal.aborted) return new Response(null, { status: 499 });
