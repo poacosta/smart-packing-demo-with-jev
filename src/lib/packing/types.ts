@@ -1,4 +1,20 @@
-import type { BagId, SeasonId, Signals, WardrobeId } from "./catalog";
+import type { BagId, SeasonId, Signals } from "./catalog";
+import type { Experimental_DecisionQuestion, Experimental_DecisionResult } from "ai";
+
+/** Original SDK answers and token usage, before packing scores are normalized. */
+export type JevResponse = Pick<Experimental_DecisionResult<Record<string, Experimental_DecisionQuestion>>, "answers" | "usage">;
+
+/** Serializable SDK input for the request viewer; excludes credentials and runtime controls. */
+export type JevRequest = {
+  model: string;
+  state: {
+    trip: string;
+    capacityLiters: number;
+    packingGoal: string;
+  };
+  questions: Record<string, Experimental_DecisionQuestion>;
+  maxRetries: number;
+};
 
 export type DecideResponse = {
   /** P(true) for each boolean signal, plus the season distribution. */
@@ -7,7 +23,6 @@ export type DecideResponse = {
   /** Fractional position on TEMPERATURE_LEVELS (0 = freezing, 4 = hot). */
   temperature: number;
   bag: BagId;
-  wardrobe: WardrobeId;
   /** Zero for offline decisions; otherwise the actual number of SDK questions. */
   questionCount: number;
   /** Capacity-aware usefulness, normalized to 0–1 for each catalog item. */
@@ -16,6 +31,10 @@ export type DecideResponse = {
   source: "model" | "offline";
   model: string;
   latencyMs: number;
+  /** Actual model-call input, or null when the offline fallback makes no call. */
+  request: JevRequest | null;
+  /** Original model output for the response viewer; null for offline decisions. */
+  response: JevResponse | null;
 };
 
 export type DecideError = { error: string };

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { BAG_IDS, BAGS, getWardrobeItems, ITEMS, SEASON_IDS, SIGNAL_IDS, WARDROBE_IDS, type Signals } from "./catalog";
-import { computePlan, type Overrides } from "./plan";
+import { BAG_IDS, BAGS, ITEMS, SEASON_IDS, SIGNAL_IDS, type Signals } from "./catalog";
+import { computePlan, isRelevant, type Overrides } from "./plan";
 
 const summer = {
   ...Object.fromEntries([...SIGNAL_IDS, ...SEASON_IDS].map((id) => [id, 0])),
@@ -25,7 +25,7 @@ test("treats every selectable capacity as a limit without adding clothing copies
     const total = plan.packed.reduce((sum, row) => sum + row.quantity * row.item.liters, 0);
     assert.ok(Math.abs(total - plan.usedLiters) < 1e-9);
   }
-  assert.equal(computePlan(summer, "checked", {}, summerScores).usedLiters, 15.1);
+  assert.equal(computePlan(summer, "checked", {}, summerScores).usedLiters, 16.2);
 });
 
 test("keeps user picks and basics while leaving excluded garments out", () => {
@@ -130,26 +130,36 @@ test("never exceeds capacity across different suitability distributions", () => 
   }
 });
 
-test("both wardrobes respect every capacity and keep only their compatible clothing", () => {
-  for (const wardrobe of WARDROBE_IDS) {
-    for (const bag of BAG_IDS) {
-      const plan = computePlan(summer, bag, {}, summerScores, wardrobe);
-      assert.equal(plan.items.length, getWardrobeItems(wardrobe).length);
-      assert.ok(plan.items.every((row) => !row.item.wardrobe || row.item.wardrobe === wardrobe));
-      assert.ok(plan.usedLiters < BAGS[bag].liters, `${wardrobe}, ${bag}`);
-      assert.ok(plan.packed.some((row) => row.item.signal === "swimming"));
-      assert.equal(plan.items.find((row) => row.item.id === "phone-charger")?.quantity, 1);
+test("the shared wardrobe keeps all items available at every capacity", () => {
+  for (const bag of BAG_IDS) {
+    const plan = computePlan(summer, bag, {}, summerScores);
+    assert.deepEqual(plan.items.map((row) => row.item.id), ITEMS.map((item) => item.id));
+    assert.ok(plan.usedLiters <= BAGS[bag].liters, bag);
+    for (const id of ["lightweight-overshirt", "formal-jacket", "swim-cap", "swim-shorts", "party-shirt", "evening-top"]) {
+      assert.ok(plan.items.some((row) => row.item.id === id), id);
     }
   }
 });
 
-test("an incompatible manual override cannot leak clothing into the other wardrobe", () => {
-  const men = computePlan(summer, "checked", {
-    "summer-dress": "in", "formal-dress": "in", swimwear: "in",
-  }, summerScores, "men");
-  assert.ok(men.items.every((row) => row.item.wardrobe !== "women"));
-  const women = computePlan(summer, "checked", {
-    "smart-outfit": "in", "swim-shorts": "in",
-  }, summerScores, "women");
-  assert.ok(women.items.every((row) => row.item.wardrobe !== "men"));
+test("manual picks can combine any clothing from the shared wardrobe", () => {
+  const selected = ["lightweight-overshirt", "formal-jacket", "swim-cap", "swim-shorts"];
+  const plan = computePlan(summer, "checked", Object.fromEntries(selected.map((id) => [id, "in"])), summerScores);
+  for (const id of selected) {
+    assert.equal(plan.items.find((row) => row.item.id === id)?.quantity, 1, id);
+  }
+  assert.ok(plan.usedLiters <= plan.capacity);
+});
+
+test("visible cards follow item suitability rather than a broad seasonal signal", () => {
+  const scores = Object.fromEntries(ITEMS.map((item) => [item.id, 0.1]));
+  scores["blazer"] = 0.9;
+  const plan = computePlan(summer, "carryon", {}, scores);
+  const linen = plan.items.find((row) => row.item.id === "linen-shirt")!;
+  const blazer = plan.items.find((row) => row.item.id === "blazer")!;
+  assert.equal(linen.status, "skipped");
+  assert.equal(isRelevant(linen), false);
+  assert.equal(blazer.status, "packed");
+  assert.equal(isRelevant(blazer), true);
+  const manual = computePlan(summer, "carryon", { "linen-shirt": "in" }, scores);
+  assert.equal(isRelevant(manual.items.find((row) => row.item.id === "linen-shirt")!), true);
 });

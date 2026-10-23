@@ -3,9 +3,9 @@
 This demo shows one possible use case for **decision models**: turning free-form
 text into typed, probability-scored decisions that application code can act on.
 
-Here the text is a trip description and the decisions are what to pack. Choose a
-Men or Women wardrobe and an 18, 24, 40 or 65 L bag, then describe the trip. Whenever
-the text, capacity or wardrobe settles
+Here the text is a trip description and the decisions are what to pack. Choose
+an 18, 24, 40 or 65 L bag and describe the trip. All 70 items belong to one wardrobe
+of neutral-cut garments and shared accessories. Whenever the text or capacity settles
 (350 ms), the app asks [Jev](https://vercel.com/ai-gateway/models/jev)
 (`typesafe-ai/jev`, through Vercel AI Gateway) every packing question in **a single
 call**. Jev scores which items suit the trip and chosen capacity; the app packs
@@ -24,13 +24,30 @@ returns an answer with probabilities for each one. That shapes how the app is bu
 - **The model judges, the code decides.** Thresholds, priorities and the bag's
   capacity are plain TypeScript, so behaviour is predictable, testable and easy to
   explain: every card shows usefulness, packed quantity and occupied litres.
-- **Many questions, one call.** Each request asks 16 context questions plus a
-  usefulness score for each item in the selected wardrobe: 43 for Men and 44 for
-  Women (59 or 60 questions in total).
+- **Many questions, one call.** Each request asks 18 context questions plus a
+  usefulness score for each of the 70 items in the shared wardrobe (88 questions
+  in total), including clothing and accessories.
 - **Probabilities, not prose.** There is no output to parse and no format to break.
-  Uncertainty stays visible: at 44% rain, the umbrella stays home.
+  Uncertainty stays visible: at 44% item suitability, the umbrella stays home.
 - **People stay in control.** The model proposes and the user overrides; their
   choices sit on top of the model's answers instead of being lost on the next call.
+  Choosing another city preset clears those overrides.
+
+## Try the demo
+
+Choose a city, edit its short prompt and watch the suitcase update:
+
+| Preset | Trip purpose | Scenario |
+| --- | --- | --- |
+| Málaga | Relaxation and beach | July, 28°C; swimming, reading and seaside walks |
+| Hamburg | Business and work | October, 12°C and rain; meetings, conference and presentations |
+| Vienna | Culture | December, -2°C and snow; museums, palaces and opera |
+| Illinois (Chicago) | Leisure | April, 12°C and rain; friends, parks, baseball and live music |
+
+The temperatures are example inputs, not live forecasts. City presets populate the
+editable trip text; they do not select a separate season or clothing category.
+For a controlled seasonal comparison, use the prompts in
+[demo scenarios](docs/demo-scenarios.md) and change only the season word.
 
 ## The pattern
 
@@ -48,7 +65,7 @@ flowchart LR
 
 | Use case                 | State                   | Example questions                                    | Application rule                       |
 | ------------------------ | ----------------------- | ---------------------------------------------------- | -------------------------------------- |
-| **Packing (this demo)**  | Trip description        | Will it rain? Which season? Which bag?               | Pack an item above its threshold, within the litres |
+| **Packing (this demo)**  | Trip description and capacity | Will it rain? Which season? How useful is each item? | Pack useful items within the selected capacity |
 | Support ticket triage    | Customer message        | Which team? How severe? Is it a refund request?      | Route automatically above 90%, otherwise to a person |
 | Content moderation       | Post or comment         | Is it spam? How toxic is it?                         | Hide, flag for review or publish       |
 | Lead qualification       | Contact form submission | Company size? Buying intent? Budget mentioned?       | Send to sales or to a nurture sequence |
@@ -73,26 +90,26 @@ sequenceDiagram
 
     User->>UI: Types or edits the trip
     Note over UI: 350 ms debounce, aborts the previous request
-    UI->>API: { trip, bag, wardrobe }
-    API->>Jev: experimental_decide({ model: "typesafe-ai/jev", state: { trip, capacityLiters, wardrobe, packingGoal }, questions })
+    UI->>API: { trip, bag }
+    API->>Jev: experimental_decide({ model: "typesafe-ai/jev", state: { trip, capacityLiters, packingGoal }, questions })
     Jev-->>API: Trip context and item usefulness scores
-    API-->>UI: signals + season + temperature + selected bag + wardrobe + itemScores
+    API-->>UI: signals + season + temperature + selected bag + itemScores
     Note over UI: computePlan() prioritizes usefulness within the chosen capacity
-    UI-->>User: Suitcase, cards and "under the hood" update
+    UI-->>User: Packing list, capacity and scores update
     User->>UI: Taps an item
     Note over UI: Recompute locally, no new model call
-    User->>UI: Changes capacity or wardrobe
-    UI->>API: Re-score the same trip for the selected bag and wardrobe
+    User->>UI: Changes capacity
+    UI->>API: Re-score the same trip for the selected bag
 ```
 
 Jev is a **decision** model: it doesn't generate text, it answers typed questions
-with probabilities. The app asks it 59 or 60 things at once, depending on the wardrobe:
+with probabilities. The app asks it 88 things at once for the shared wardrobe:
 
 | Type      | Question                                                                                   | Used in the UI                         |
 | --------- | ------------------------------------------------------------------------------------------ | -------------------------------------- |
-| `boolean` | 14 signals: sun, cold, snow, rain, swimming, hiking, sightseeing, abroad, flying, reading, work, dress code, workouts, pack light | Trip context shown under the hood |
+| `boolean` | 16 signals: sun, cold, snow, rain, swimming, hiking, sightseeing, abroad, flying, reading, work, conferences, parties, dress code, workouts, pack light | Trip context shown under the hood |
 | `choice`  | Season at the destination (winter / spring / summer / autumn), minding the hemisphere     | Seasonal context          |
-| `score`   | Temperature (5 levels, from "Freezing" to "Hot")                                           | Subtitle "≈ winter · freezing…"        |
+| `score`   | Temperature (5 levels, from "Freezing" to "Hot")                                           | Decision scores        |
 | `score`   | Usefulness of each available wardrobe item, given the trip and selected capacity (5 levels) | Useful items within the capacity limit |
 
 The call, simplified (see [`decision.ts`](src/lib/packing/decision.ts)):
@@ -102,7 +119,7 @@ import { experimental_decide as decide } from "ai";
 
 const result = await decide({
   model: "typesafe-ai/jev",
-  state: { trip, capacityLiters: 24, wardrobe: "women", packingGoal: "Pack useful items within the selected capacity; spare space is fine." },
+  state: { trip, capacityLiters: 24, packingGoal: "Pack useful items within the selected capacity; spare space is fine." },
   questions: {
     snow: { type: "boolean", instructions: "Will there be snow, ice or freezing temperatures?" },
     season: {
@@ -122,11 +139,11 @@ result.answers.season.probabilities;  // { winter: 1, spring: 0, summer: 0, autu
 ### Packing rules
 
 The logic lives in [`plan.ts`](src/lib/packing/plan.ts). It is pure and recomputed
-on the client. Changing capacity or wardrobe asks Jev to re-score the trip; manual item edits
+on the client. Changing capacity asks Jev to re-score the trip; manual item edits
 recompute the plan locally.
 
-1. The traveller selects the capacity and wardrobe. Only compatible clothing and
-   shared items are sent to the model or shown in the packing lists. The model
+1. The traveller selects the capacity. All clothing and accessories are sent to
+   the model and available in the packing lists, with neutral cuts and styling. The model
    scores their usefulness from 0 to 4, normalized to 0–1 in the response.
 2. Reserve one unit of each manual pick, then each basic item, while space allows.
 3. Consider other items with a usefulness score of at least 50% (useful or better).
@@ -138,9 +155,23 @@ recompute the plan locally.
 6. Tapping an item removes it and recomputes the remaining useful picks within the
    limit. "Reset to Jev" clears manual overrides.
 
+Each item includes specific climate and activity guidance in its question. For
+example, a winter coat, spring trench, party shirt and business shirt are judged
+for their intended uses rather than treated as interchangeable clothes. An explicit
+season in the input sets the scenario; dates are used to infer it only when no
+season is named. Explicit temperatures take precedence for warmth requirements.
+Phone, charger, water bottle and toiletries are the basic kit. Clothing and shoes
+are scored for the trip. Visible cards follow item suitability; rejected items
+remain available under "Not packed". The catalog uses neutral-cut clothing and
+plain accessories, with distinct materials and functions for each occasion.
+Clothing preferences can be described in the trip text.
+
+See [demo scenarios](docs/demo-scenarios.md) for controlled seasonal and activity
+comparisons, including prompts that change only one word.
+
 ```mermaid
 flowchart TD
-    C[Selected capacity + wardrobe + trip] --> J[Jev usefulness scores]
+    C[Selected capacity + trip] --> J[Jev usefulness scores]
     J --> E[Exclude removed and unsuitable items]
     E --> R[Reserve manual picks and basics]
     R --> F[Maximize usefulness within the limit]
@@ -148,21 +179,26 @@ flowchart TD
     Q --> P[Useful items with room to spare]
 ```
 
-"Under the hood" (in the footer) shows the trip probabilities, season distribution,
-temperature and the capacity passed to the model. Cards show item suitability.
+"Show Jev request" reveals the last SDK input: model, trip state, questions and
+retry setting. "Show Jev response" reveals the original SDK answers and token
+usage, before packing scores are normalized. Both start collapsed and show the
+last successful model call. Offline mode clearly states that no Jev call was made.
+"Decision scores" contains the trip probabilities and temperature.
+Cards show item suitability; the capacity bar shows the limit and remaining space.
 
 ### Why Jev and not Laya
 
-The first version used Laya (`convaiinnovations/laya`), which has an 8k-token context
-window. Jev offers 32k, native probability distributions for `choice` and `score`
-questions, and costs $0.042 per million input tokens. You can switch models with
-`DECISION_MODEL` without touching the code.
+The first version used Laya (`convaiinnovations/laya`). The current implementation
+uses Jev for typed answers, probability distributions and per-item scores through
+the decision SDK. You can switch models with `DECISION_MODEL` without touching
+the code; the replacement must support the same decision question types.
 
 ## Historical measurements
 
 These measurements belong to the previous 17-question version, which asked the
-model to choose a bag. They do not measure the current capacity- and wardrobe-aware
-requests. Current model latency has not been measured yet.
+model to choose a bag. They do not measure the current capacity-aware
+requests. The UI reports each current call's latency; the figures below are not
+a benchmark of the current 88-question catalog.
 
 | Preset              | Season       | Temperature | Bag  | Latency | Strong signals (≥ 50%)                        |
 | ------------------- | ------------ | ----------- | ---- | ------- | --------------------------------------------- |
@@ -172,15 +208,15 @@ requests. Current model latency has not been measured yet.
 | Spring blossoms     | spring 100%  | mild        | 24 L | 267 ms  | sightseeing, abroad, rain 56%                 |
 | July in Patagonia   | winter 100%  | freezing    | 65 L | 385 ms  | cold, snow, hiking, flying                    |
 
-The retired "July in Patagonia" example checked that Jev understands July is winter in the southern
-hemisphere. In practice seasons almost always come out close to 100%, so the 35%
-threshold rarely matters.
+The retired "July in Patagonia" example checked that Jev understands July is
+winter in the southern hemisphere. Current packing uses per-item usefulness
+scores; season probabilities provide context rather than selecting a wardrobe.
 
 ## Run locally
 
 ```bash
-git clone https://github.com/poacosta/smart-packing-with-jev.git
-cd smart-packing-with-jev
+git clone https://github.com/poacosta/smart-packing-demo-with-jev.git
+cd smart-packing-demo-with-jev
 npm install
 cp .env.example .env.local   # add your AI_GATEWAY_API_KEY
 npm run dev
@@ -194,9 +230,9 @@ npm run dev
 `.env.local` is git-ignored: never commit your key. The key is only read on the
 server and never reaches the browser.
 
-Without credentials, `/api/decide` uses an **offline keyword fallback**. The UI shows
-a banner when that happens. It is handy for working on the interface without
-spending calls, but it is not what the demo is about.
+Without credentials, `/api/decide` uses an **offline keyword fallback**. The status
+reads "Offline demo · keyword matching". It is useful for checking the interface
+without model calls, but does not provide Jev's contextual understanding.
 
 Scripts: `npm run dev`, `npm run build`, `npm run start`, `npm run lint`.
 
@@ -211,7 +247,7 @@ npx tsc src/lib/packing/plan.test.ts src/lib/packing/decision.test.ts --module c
 NODE_PATH="$PWD/node_modules" node --conditions=react-server --test /tmp/packing-tests/plan.test.js /tmp/packing-tests/decision.test.js
 ```
 
-These tests cover both wardrobes and all four capacities, useful selection with spare
+These tests cover the shared wardrobe and all four capacities, useful selection with spare
 space, manual overrides, no duplicated items, capacity limits, and the request passed through the real
 decision SDK with a mock provider. They do not measure the live Jev service.
 
@@ -229,13 +265,17 @@ upload the key.
 
 ## API
 
-`POST /api/decide` with `{ "trip": "…", "bag": "cabin", "wardrobe": "women" }`
+`POST /api/decide` with `{ "trip": "…", "bag": "cabin" }`
 (2000 trip characters max).
 Valid bag ids are `underseat`, `cabin`, `carryon` and `checked`; omitting `bag`
 defaults to `cabin`. Invalid capacities return status 400.
-Valid wardrobe ids are `men` (the default) and `women`; invalid wardrobes also
-return status 400. Each response echoes the selected wardrobe and reports the
-actual SDK question count, or zero for the offline fallback.
+All 70 catalog items are considered for every request. Each response reports
+the actual SDK question count, or zero for the offline fallback.
+Model responses also include `request`, the serializable input used for that call.
+It contains no credentials or abort signal. The `response` field contains the
+original SDK `answers` and `usage`. Offline responses set both fields to `null`.
+
+Example response excerpt (the request and raw response objects are omitted):
 
 ```json
 {
@@ -243,9 +283,8 @@ actual SDK question count, or zero for the offline fallback.
   "season": "winter",
   "temperature": 0.93,
   "bag": "cabin",
-  "wardrobe": "women",
-  "questionCount": 60,
-  "itemScores": { "cotton-tees": 1, "linen-shirt": 0.85, "wool-coat": 0.03, "…": 0 },
+  "questionCount": 88,
+  "itemScores": { "cotton-tees": 0.35, "linen-shirt": 0.05, "wool-coat": 0.96, "…": 0 },
   "source": "model",
   "model": "typesafe-ai/jev",
   "latencyMs": 385
@@ -253,7 +292,7 @@ actual SDK question count, or zero for the offline fallback.
 ```
 
 `source` is `"offline"` when the fallback answered. Errors return `{ "error": "…" }`
-with status 400 (empty trip) or 502 (the model call failed; details are only logged
+with status 400 (empty trip or invalid capacity) or 502 (the model call failed; details are only logged
 on the server).
 
 ## Project structure
@@ -263,8 +302,8 @@ src/lib/packing/catalog.ts   signals, seasons, items (litres + signal), bags, pr
 src/lib/packing/decision.ts  experimental_decide against Jev + offline fallback
 src/lib/packing/plan.ts      thresholds, capacity and overrides → packing plan (pure)
 src/lib/packing/art.ts       detects the illustrations in public/items/
-src/app/api/decide/route.ts  POST { trip, bag, wardrobe } → trip signals + item scores
-src/components/              UI (suitcase, cards, "under the hood", debounced hook)
+src/app/api/decide/route.ts  POST { trip, bag } → trip signals + item scores
+src/components/              UI (suitcase, capacity summary, cards, request/response viewers, scores, debounced hook)
 ```
 
 ## Customizing
@@ -272,26 +311,33 @@ src/components/              UI (suitcase, cards, "under the hood", debounced ho
 Everything comes from [`catalog.ts`](src/lib/packing/catalog.ts); the questions sent
 to the model are generated from it.
 
-- **New item:** add `{ id, name, emoji, liters, signal }` to `ITEMS`.
-  Set `wardrobe: "men"` or `wardrobe: "women"` for a wardrobe-specific item; omit it
-  for shared items. Use `image` for an explicit individual illustration URL.
+- **New item:** add `{ id, name, use, emoji, liters, signal }` to `ITEMS`.
+  Every item is part of the shared wardrobe. Use `image` for an explicit
+  individual illustration URL.
   `signal` is a signal, a season or `"basic"`; volumes use at most one decimal place.
+  `use` describes the item's climate, activity and exclusions for Jev. Optional
+  `alsoFor` signals support multiple uses in the offline keyword fallback.
 - **New signal:** add an entry to `SIGNALS` with a `label` and a `question`, plus its
   regex in `KEYWORDS` in `decision.ts` for the fallback.
 - **Suitability threshold:** `ITEM_SCORE_THRESHOLD` in `plan.ts`. The other signal
   thresholds support planning without per-item scores.
-- **Presets:** `PRESETS` in `catalog.ts`: four seasonal city examples, Málaga
-  (summer), Hamburg (autumn), Vienna (winter) and Kyoto (spring).
+- **Presets:** `PRESETS` in `catalog.ts`: Málaga for beach relaxation, Hamburg
+  for business and work, Vienna for culture, and Illinois (Chicago) for leisure.
+  Jev infers the season from the dates, destination and weather in the trip text;
+  the preset does not select a season.
 
 ## Illustrations
 
-The original 44 items have distinct illustrations in
-`public/illustrations/packing-atlas.png`. Two additional wardrobe items use
-`public/items/swim-shorts.png` and `public/items/formal-dress.png`.
-The atlas has six columns and eight rows;
+The catalog uses three transparent illustration sheets:
+`public/illustrations/packing-atlas.png` for the original shared items,
+`public/illustrations/wardrobe-atlas.png` for additional climate and activity gear,
+and `public/illustrations/unisex-atlas.png` for neutral occasion clothing and
+accessories. Swim shorts use `public/items/swim-shorts.png`. Unused illustrations
+from earlier catalog versions are not offered as items.
+The original atlas has six columns and eight rows;
 `src/lib/packing/illustrations.ts` maps each item id to its pixel bounds so each
 illustration stays centered without showing neighboring items. The same
-illustration appears in the cards, suitcase and unpacked list.
+illustration appears in the suitcase, cards and unpacked list.
 
 To override an illustration, save `public/items/<id>.png` (`.webp`, `.svg` and `.jpg`
 also work). Individual files take priority over the atlas. Recommended format:
@@ -304,25 +350,28 @@ Suggested base prompt:
 > terracotta, cream, mustard), subtle paper grain, gentle shading, centered,
 > isolated on a transparent background, no text.
 
+The following are examples; `ITEMS` in `catalog.ts` is the complete 70-item list.
+
 | Group    | ids                                                                                   |
 | -------- | ------------------------------------------------------------------------------------- |
-| Basics   | `cotton-tees`, `walking-shoes`, `phone-charger`, `water-bottle`, `wash-bag`           |
-| Summer   | `linen-shirt`, `summer-dress`, `tank-tops`, `linen-trousers`                          |
+| Basics   | `phone-charger`, `water-bottle`, `wash-bag`, `smartphone` |
+| Summer   | `cotton-tees`, `linen-shirt`, `lightweight-overshirt`, `tank-tops`, `linen-trousers` |
 | Spring   | `trench-coat`, `cardigan`, `light-chinos`, `white-sneakers`                           |
 | Autumn   | `denim-jacket`, `flannel-shirt`, `dark-jeans`, `ankle-boots`                          |
 | Winter   | `wool-coat`, `wool-scarf`, `fleece-pullover`, `winter-boots`                          |
 | Weather  | `easy-shorts`, `sandals`, `sunglasses`, `sunscreen`, `sun-hat`, `cozy-knit`, `thermal-layers`, `puffer-jacket`, `beanie-gloves`, `rain-jacket`, `tiny-umbrella` |
-| Activity | `swimwear`, `swim-shorts`, `hiking-boots`, `daypack`, `little-camera`, `passport`, `travel-adapter`, `headphones`, `good-book`, `laptop`, `smart-outfit`, `formal-dress`, `dress-shoes`, `running-kit` |
+| Activity | `swim-cap`, `swim-shorts`, `hiking-boots`, `daypack`, `little-camera`, `passport`, `travel-adapter`, `headphones`, `good-book`, `laptop`, `formal-jacket`, `formal-trousers`, `dress-shoes`, `running-kit` |
 
 ## Troubleshooting
 
-- **The "Offline keyword fallback" banner shows up:** `AI_GATEWAY_API_KEY` is missing
-  from `.env.local`, or the server started before you added it. Restart `npm run dev`.
+- **The status reads "Offline demo · keyword matching":** neither an
+  `AI_GATEWAY_API_KEY` nor a `VERCEL_OIDC_TOKEN` is available to the server.
+  Configure credentials and restart `npm run dev`.
 - **I added an illustration and it doesn't show:** the image list is cached; restart
   the dev server (in production it is read at build time).
 - **502 error in the status line:** the model call failed. The details are in the
   server logs (`Decision failed`).
-- **A capacity or wardrobe change is waiting:** enable Live so the selection is
+- **A capacity change is waiting:** enable Live so the selection is
   sent to the model. Paused mode does not issue requests.
 - **Space remains:** capacity is an upper limit. The app packs useful items and
   leaves optional items out rather than adding duplicates to fill the bag.
