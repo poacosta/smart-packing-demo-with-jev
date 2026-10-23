@@ -78,7 +78,7 @@ sequenceDiagram
     Jev-->>API: Trip context and item usefulness scores
     API-->>UI: signals + season + temperature + selected bag + wardrobe + itemScores
     Note over UI: computePlan() prioritizes usefulness within the chosen capacity
-    UI-->>User: Suitcase, cards and "under the hood" update
+    UI-->>User: Packing list, capacity and scores update
     User->>UI: Taps an item
     Note over UI: Recompute locally, no new model call
     User->>UI: Changes capacity or wardrobe
@@ -148,8 +148,10 @@ flowchart TD
     Q --> P[Useful items with room to spare]
 ```
 
-"Under the hood" (in the footer) shows the trip probabilities, season distribution,
-temperature and the capacity passed to the model. Cards show item suitability.
+"Show Jev request" reveals the last SDK input: model, trip state, questions and
+retry setting. It starts collapsed. Offline mode clearly states that no request
+was sent. "Decision scores" contains the trip probabilities, season and temperature.
+Cards show item suitability; the capacity bar shows the limit and remaining space.
 
 ### Why Jev and not Laya
 
@@ -236,6 +238,8 @@ defaults to `cabin`. Invalid capacities return status 400.
 Valid wardrobe ids are `men` (the default) and `women`; invalid wardrobes also
 return status 400. Each response echoes the selected wardrobe and reports the
 actual SDK question count, or zero for the offline fallback.
+Model responses also include `request`, the serializable input used for that call.
+It contains no credentials or abort signal. Offline responses set `request` to `null`.
 
 ```json
 {
@@ -264,7 +268,7 @@ src/lib/packing/decision.ts  experimental_decide against Jev + offline fallback
 src/lib/packing/plan.ts      thresholds, capacity and overrides → packing plan (pure)
 src/lib/packing/art.ts       detects the illustrations in public/items/
 src/app/api/decide/route.ts  POST { trip, bag, wardrobe } → trip signals + item scores
-src/components/              UI (suitcase, cards, "under the hood", debounced hook)
+src/components/              UI (suitcase, capacity summary, cards, request viewer, scores, debounced hook)
 ```
 
 ## Customizing
@@ -291,7 +295,7 @@ The original 44 items have distinct illustrations in
 The atlas has six columns and eight rows;
 `src/lib/packing/illustrations.ts` maps each item id to its pixel bounds so each
 illustration stays centered without showing neighboring items. The same
-illustration appears in the cards, suitcase and unpacked list.
+illustration appears in the suitcase, cards and unpacked list.
 
 To override an illustration, save `public/items/<id>.png` (`.webp`, `.svg` and `.jpg`
 also work). Individual files take priority over the atlas. Recommended format:

@@ -11,6 +11,8 @@ test("passes every selected capacity and all item questions through the decision
     const selectedItems = getWardrobeItems(wardrobe);
     const controller = new AbortController();
     let calls = 0;
+    let sentState: unknown;
+    let sentQuestions: unknown;
     const model = new DecisionMockModelV4({
       modelId: "packing-capacity-test",
       supportedQuestionTypes: ["boolean", "choice", "score"],
@@ -18,6 +20,8 @@ test("passes every selected capacity and all item questions through the decision
         calls++;
         const state = options.state.find((part) => part.type === "json");
         assert.ok(state?.type === "json");
+        sentState = state.value;
+        sentQuestions = options.questions;
         assert.equal((state.value as { capacityLiters: number }).capacityLiters, BAGS[bag].liters);
         assert.equal((state.value as { wardrobe: string }).wardrobe, wardrobe);
         assert.match((state.value as { packingGoal: string }).packingGoal, /may remain partly empty/);
@@ -56,6 +60,12 @@ test("passes every selected capacity and all item questions through the decision
     assert.equal(result.model, "packing-capacity-test");
     assert.equal(Object.keys(result.itemScores).length, selectedItems.length);
     assert.ok(Object.values(result.itemScores).every((score) => score === 0.75));
+    assert.ok(result.request);
+    assert.equal(result.request.model, "packing-capacity-test");
+    assert.deepEqual(result.request.state, sentState);
+    assert.deepEqual(result.request.questions, sentQuestions);
+    assert.deepEqual(Object.keys(result.request).sort(), ["maxRetries", "model", "questions", "state"]);
+    assert.equal(result.request.maxRetries, 1);
   }
 });
 
@@ -66,6 +76,7 @@ test("offline decisions respect the selected capacity instead of choosing anothe
     assert.equal(result.source, "offline");
     assert.equal(result.wardrobe, wardrobe);
     assert.equal(result.questionCount, 0);
+    assert.equal(result.request, null);
     assert.equal(Object.keys(result.itemScores).length, getWardrobeItems(wardrobe).length);
   }
 });

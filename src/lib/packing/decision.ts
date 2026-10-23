@@ -85,8 +85,8 @@ export async function decideTrip(
     ...getItemQuestions(wardrobe),
     ...tripQuestions,
   };
-  const result = await decide({
-    model,
+  const request = {
+    model: typeof model === "string" ? model : model.modelId,
     state: {
       trip,
       capacityLiters: BAGS[bag].liters,
@@ -95,9 +95,9 @@ export async function decideTrip(
       packingGoal: "Pack useful items for the trip within the selected capacity. The bag may remain partly empty. Do not add optional items or extra clothing units just to fill space.",
     },
     questions,
-    abortSignal,
     maxRetries: 1,
-  });
+  };
+  const result = await decide({ ...request, model, abortSignal });
   const latencyMs = Math.round(performance.now() - started);
 
   const { season, temperature } = result.answers;
@@ -125,6 +125,7 @@ export async function decideTrip(
     source: "model",
     model: result.response?.modelId ?? DECISION_MODEL,
     latencyMs,
+    request,
   };
 }
 
@@ -185,5 +186,6 @@ export function decideOffline(
     source: "offline",
     model: "keyword heuristic",
     latencyMs: Math.round(performance.now() - started),
+    request: null,
   };
 }

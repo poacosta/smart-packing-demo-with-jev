@@ -28,15 +28,15 @@ export function UnderTheHood({
   return (
     <div className="grid gap-8 md:grid-cols-[2fr_1fr]">
       <section>
-        <h3 className="mb-3 text-[10px] tracking-[0.2em] text-muted uppercase">
-          Boolean questions · P(true)
+        <h3 className="mb-3 text-base font-semibold">
+          Trip signals · probability
         </h3>
         <ul className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
           {signals.map((id) => {
             const p = decision.signals[id];
             return (
               <li key={id} title={SIGNALS[id].question}>
-                <div className="flex justify-between text-xs">
+                <div className="flex justify-between text-sm">
                   <span>{SIGNALS[id].label}</span>
                   <span className="tabular-nums text-muted">{pct(p)}</span>
                 </div>
@@ -54,10 +54,10 @@ export function UnderTheHood({
 
       <section className="space-y-6">
         <div>
-          <h3 className="mb-2 text-[10px] tracking-[0.2em] text-muted uppercase">
-            Choice · season
+          <h3 className="mb-2 text-base font-semibold">
+            Season
           </h3>
-          <ul className="space-y-1 text-xs">
+          <ul className="space-y-1 text-sm">
             {SEASON_IDS.map((id) => (
               <li
                 key={id}
@@ -70,27 +70,25 @@ export function UnderTheHood({
           </ul>
         </div>
         <div>
-          <h3 className="mb-2 text-[10px] tracking-[0.2em] text-muted uppercase">
-            Score · temperature
+          <h3 className="mb-2 text-base font-semibold">
+            Temperature
           </h3>
-          <p className="font-serif text-2xl italic">{tempLevel}</p>
-          <p className="text-xs text-muted tabular-nums">
+          <p className="text-lg">{tempLevel}</p>
+          <p className="text-sm text-muted tabular-nums">
             score {decision.temperature.toFixed(2)} of {TEMPERATURE_LEVELS.length - 1}
           </p>
         </div>
         <div>
-          <h3 className="mb-2 text-[10px] tracking-[0.2em] text-muted uppercase">
-            Your capacity
+          <h3 className="mb-2 text-base font-semibold">
+            Bag
           </h3>
           <p className="text-sm">{BAGS[decision.bag].label}</p>
           <p className="mt-1 text-sm">{WARDROBES[decision.wardrobe].label} wardrobe</p>
-          <p className="mt-1 text-xs text-muted">Passed to the model when scoring each item. This is a capacity limit; the bag may have room to spare.</p>
         </div>
-        <p className="text-xs text-muted">
+        <p className="text-sm text-muted">
           {decision.source === "model"
-            ? `${decision.questionCount} questions, one call to ${decision.model} in ${decision.latencyMs} ms.`
-            : "Offline keyword matching; no model call."}{" "}
-          The bars show trip signals; each item also receives a capacity-aware usefulness score. Packing prioritizes useful items within the limit.
+            ? `${decision.questionCount} questions · ${decision.latencyMs} ms`
+            : "Offline · no model call"}
         </p>
       </section>
     </div>

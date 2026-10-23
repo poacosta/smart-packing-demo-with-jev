@@ -1,4 +1,19 @@
 import type { BagId, SeasonId, Signals, WardrobeId } from "./catalog";
+import type { Experimental_DecisionQuestion } from "ai";
+
+/** Serializable SDK input for the request viewer; excludes credentials and runtime controls. */
+export type JevRequest = {
+  model: string;
+  state: {
+    trip: string;
+    capacityLiters: number;
+    wardrobe: WardrobeId;
+    wardrobePreference: string;
+    packingGoal: string;
+  };
+  questions: Record<string, Experimental_DecisionQuestion>;
+  maxRetries: number;
+};
 
 export type DecideResponse = {
   /** P(true) for each boolean signal, plus the season distribution. */
@@ -16,6 +31,8 @@ export type DecideResponse = {
   source: "model" | "offline";
   model: string;
   latencyMs: number;
+  /** Actual model-call input, or null when the offline fallback makes no call. */
+  request: JevRequest | null;
 };
 
 export type DecideError = { error: string };
