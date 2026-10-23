@@ -1,5 +1,7 @@
 # Smart Packing Demo with Jev
 
+![Pack with Jev showing the Málaga beach trip, illustrated suitcase and packing recommendations](docs/images/packing-demo-cover.jpg)
+
 This demo shows one possible use case for **decision models**: turning free-form
 text into typed, probability-scored decisions that application code can act on.
 
