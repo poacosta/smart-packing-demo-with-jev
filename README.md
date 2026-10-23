@@ -4,8 +4,8 @@ This demo shows one possible use case for **decision models**: turning free-form
 text into typed, probability-scored decisions that application code can act on.
 
 Here the text is a trip description and the decisions are what to pack. Choose
-an 18, 24, 40 or 65 L bag and describe the trip. All 70 items belong to one wardrobe of neutral-cut garments
-and shared accessories. Whenever the text or capacity settles
+an 18, 24, 40 or 65 L bag and describe the trip. All 70 items belong to one wardrobe
+of neutral-cut garments and shared accessories. Whenever the text or capacity settles
 (350 ms), the app asks [Jev](https://vercel.com/ai-gateway/models/jev)
 (`typesafe-ai/jev`, through Vercel AI Gateway) every packing question in **a single
 call**. Jev scores which items suit the trip and chosen capacity; the app packs
@@ -31,6 +31,23 @@ returns an answer with probabilities for each one. That shapes how the app is bu
   Uncertainty stays visible: at 44% item suitability, the umbrella stays home.
 - **People stay in control.** The model proposes and the user overrides; their
   choices sit on top of the model's answers instead of being lost on the next call.
+  Choosing another city preset clears those overrides.
+
+## Try the demo
+
+Choose a city, edit its short prompt and watch the suitcase update:
+
+| Preset | Trip purpose | Scenario |
+| --- | --- | --- |
+| Málaga | Relaxation and beach | July, 28°C; swimming, reading and seaside walks |
+| Hamburg | Business and work | October, 12°C and rain; meetings, conference and presentations |
+| Vienna | Culture | December, -2°C and snow; museums, palaces and opera |
+| Illinois (Chicago) | Leisure | April, 12°C and rain; friends, parks, baseball and live music |
+
+The temperatures are example inputs, not live forecasts. City presets populate the
+editable trip text; they do not select a separate season or clothing category.
+For a controlled seasonal comparison, use the prompts in
+[demo scenarios](docs/demo-scenarios.md) and change only the season word.
 
 ## The pattern
 
@@ -48,7 +65,7 @@ flowchart LR
 
 | Use case                 | State                   | Example questions                                    | Application rule                       |
 | ------------------------ | ----------------------- | ---------------------------------------------------- | -------------------------------------- |
-| **Packing (this demo)**  | Trip description        | Will it rain? Which season? Which bag?               | Pack an item above its threshold, within the litres |
+| **Packing (this demo)**  | Trip description and capacity | Will it rain? Which season? How useful is each item? | Pack useful items within the selected capacity |
 | Support ticket triage    | Customer message        | Which team? How severe? Is it a refund request?      | Route automatically above 90%, otherwise to a person |
 | Content moderation       | Post or comment         | Is it spam? How toxic is it?                         | Hide, flag for review or publish       |
 | Lead qualification       | Contact form submission | Company size? Buying intent? Budget mentioned?       | Send to sales or to a nurture sequence |
@@ -171,16 +188,17 @@ Cards show item suitability; the capacity bar shows the limit and remaining spac
 
 ### Why Jev and not Laya
 
-The first version used Laya (`convaiinnovations/laya`), which has an 8k-token context
-window. Jev offers 32k, native probability distributions for `choice` and `score`
-questions, and costs $0.042 per million input tokens. You can switch models with
-`DECISION_MODEL` without touching the code.
+The first version used Laya (`convaiinnovations/laya`). The current implementation
+uses Jev for typed answers, probability distributions and per-item scores through
+the decision SDK. You can switch models with `DECISION_MODEL` without touching
+the code; the replacement must support the same decision question types.
 
 ## Historical measurements
 
 These measurements belong to the previous 17-question version, which asked the
 model to choose a bag. They do not measure the current capacity-aware
-requests. Current model latency has not been measured yet.
+requests. The UI reports each current call's latency; the figures below are not
+a benchmark of the current 88-question catalog.
 
 | Preset              | Season       | Temperature | Bag  | Latency | Strong signals (≥ 50%)                        |
 | ------------------- | ------------ | ----------- | ---- | ------- | --------------------------------------------- |
@@ -190,15 +208,15 @@ requests. Current model latency has not been measured yet.
 | Spring blossoms     | spring 100%  | mild        | 24 L | 267 ms  | sightseeing, abroad, rain 56%                 |
 | July in Patagonia   | winter 100%  | freezing    | 65 L | 385 ms  | cold, snow, hiking, flying                    |
 
-The retired "July in Patagonia" example checked that Jev understands July is winter in the southern
-hemisphere. In practice seasons almost always come out close to 100%, so the 35%
-threshold rarely matters.
+The retired "July in Patagonia" example checked that Jev understands July is
+winter in the southern hemisphere. Current packing uses per-item usefulness
+scores; season probabilities provide context rather than selecting a wardrobe.
 
 ## Run locally
 
 ```bash
-git clone https://github.com/poacosta/smart-packing-with-jev.git
-cd smart-packing-with-jev
+git clone https://github.com/poacosta/smart-packing-demo-with-jev.git
+cd smart-packing-demo-with-jev
 npm install
 cp .env.example .env.local   # add your AI_GATEWAY_API_KEY
 npm run dev
@@ -212,9 +230,9 @@ npm run dev
 `.env.local` is git-ignored: never commit your key. The key is only read on the
 server and never reaches the browser.
 
-Without credentials, `/api/decide` uses an **offline keyword fallback**. The UI shows
-a banner when that happens. It is handy for working on the interface without
-spending calls, but it is not what the demo is about.
+Without credentials, `/api/decide` uses an **offline keyword fallback**. The status
+reads "Offline demo · keyword matching". It is useful for checking the interface
+without model calls, but does not provide Jev's contextual understanding.
 
 Scripts: `npm run dev`, `npm run build`, `npm run start`, `npm run lint`.
 
@@ -257,6 +275,8 @@ Model responses also include `request`, the serializable input used for that cal
 It contains no credentials or abort signal. The `response` field contains the
 original SDK `answers` and `usage`. Offline responses set both fields to `null`.
 
+Example response excerpt (the request and raw response objects are omitted):
+
 ```json
 {
   "signals": { "sun": 0.43, "cold": 0.94, "snow": 0.87, "…": 0, "winter": 1, "spring": 0, "summer": 0, "autumn": 0 },
@@ -264,7 +284,7 @@ original SDK `answers` and `usage`. Offline responses set both fields to `null`.
   "temperature": 0.93,
   "bag": "cabin",
   "questionCount": 88,
-  "itemScores": { "cotton-tees": 1, "linen-shirt": 0.85, "wool-coat": 0.03, "…": 0 },
+  "itemScores": { "cotton-tees": 0.35, "linen-shirt": 0.05, "wool-coat": 0.96, "…": 0 },
   "source": "model",
   "model": "typesafe-ai/jev",
   "latencyMs": 385
@@ -272,7 +292,7 @@ original SDK `answers` and `usage`. Offline responses set both fields to `null`.
 ```
 
 `source` is `"offline"` when the fallback answered. Errors return `{ "error": "…" }`
-with status 400 (empty trip) or 502 (the model call failed; details are only logged
+with status 400 (empty trip or invalid capacity) or 502 (the model call failed; details are only logged
 on the server).
 
 ## Project structure
@@ -283,7 +303,7 @@ src/lib/packing/decision.ts  experimental_decide against Jev + offline fallback
 src/lib/packing/plan.ts      thresholds, capacity and overrides → packing plan (pure)
 src/lib/packing/art.ts       detects the illustrations in public/items/
 src/app/api/decide/route.ts  POST { trip, bag } → trip signals + item scores
-src/components/              UI (suitcase, capacity summary, cards, request viewer, scores, debounced hook)
+src/components/              UI (suitcase, capacity summary, cards, request/response viewers, scores, debounced hook)
 ```
 
 ## Customizing
@@ -330,6 +350,8 @@ Suggested base prompt:
 > terracotta, cream, mustard), subtle paper grain, gentle shading, centered,
 > isolated on a transparent background, no text.
 
+The following are examples; `ITEMS` in `catalog.ts` is the complete 70-item list.
+
 | Group    | ids                                                                                   |
 | -------- | ------------------------------------------------------------------------------------- |
 | Basics   | `phone-charger`, `water-bottle`, `wash-bag`, `smartphone` |
@@ -342,8 +364,9 @@ Suggested base prompt:
 
 ## Troubleshooting
 
-- **The "Offline keyword fallback" banner shows up:** `AI_GATEWAY_API_KEY` is missing
-  from `.env.local`, or the server started before you added it. Restart `npm run dev`.
+- **The status reads "Offline demo · keyword matching":** neither an
+  `AI_GATEWAY_API_KEY` nor a `VERCEL_OIDC_TOKEN` is available to the server.
+  Configure credentials and restart `npm run dev`.
 - **I added an illustration and it doesn't show:** the image list is cached; restart
   the dev server (in production it is read at build time).
 - **502 error in the status line:** the model call failed. The details are in the
